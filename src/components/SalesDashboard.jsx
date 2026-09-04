@@ -158,6 +158,7 @@ export const SalesDashboard = ({
       'Phone Number',
       'Email',
       'Player Count',
+      'Pax Category',
       'Offer Applied',
       'Approval Reference',
       'Base Total (INR)',
@@ -182,6 +183,7 @@ export const SalesDashboard = ({
         `"${b.phone || ''}"`,
         `"${b.email || ''}"`,
         b.paxCount || 0,
+        `"${getGameCategoryLabel(b)}"`,
         `"${(b.offerName || 'None').replace(/"/g, '""')}"`,
         `"${(b.referencePerson || 'N/A').replace(/"/g, '""')}"`,
         b.baseTotal || b.totalAmount || 0,
@@ -533,9 +535,12 @@ export const SalesDashboard = ({
                         </div>
                       </td>
 
-                      {/* Players Count */}
+                      {/* Players Count & Category */}
                       <td className="px-5 py-4 font-mono font-extrabold text-white text-xs">
-                        {b.paxCount} Players
+                        <div className="font-extrabold text-white text-sm">{b.paxCount} Players</div>
+                        <div className="text-[10px] font-black text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-500/50 mt-1 inline-block">
+                          {getGameCategoryLabel(b)}
+                        </div>
                       </td>
 
                       {/* Offer & Reference */}
