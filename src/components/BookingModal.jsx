@@ -134,7 +134,7 @@ export const BookingModal = ({
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!canSubmit) return;
 
@@ -166,9 +166,14 @@ export const BookingModal = ({
       status: isPendingBooking ? 'Pending' : 'Confirmed'
     };
 
-    onSubmitBooking(bookingPayload, editingBooking?.id);
-    setSubmitting(false);
-    onClose();
+    try {
+      await onSubmitBooking(bookingPayload, editingBooking?.id);
+      onClose();
+    } catch (err) {
+      console.error('Booking save error:', err);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!isOpen) return null;
