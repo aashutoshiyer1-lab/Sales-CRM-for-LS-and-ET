@@ -9,10 +9,12 @@ import {
 } from 'firebase/database';
 
 // ─── Firebase Config ─────────────────────────────────────────────
+const DATABASE_URL = "https://sales-crm-ls-et-default-rtdb.firebaseio.com";
+
 const firebaseConfig = {
   apiKey: "AIzaSyCQk69XobQEG_iLSuhRytpFjCSL59nT3JA",
   authDomain: "sales-crm-ls-et.firebaseapp.com",
-  databaseURL: "https://sales-crm-ls-et-default-rtdb.firebaseio.com",
+  databaseURL: DATABASE_URL,
   projectId: "sales-crm-ls-et",
   storageBucket: "sales-crm-ls-et.firebasestorage.app",
   messagingSenderId: "1080098360752",
@@ -23,16 +25,39 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const rtdb = getDatabase(app);
 
-// ─── Helper: Convert Firebase snapshot to sorted array ───────────
-function snapshotToArray(snapshot) {
-  if (!snapshot.exists()) return [];
-  const data = snapshot.val();
+// ─── REST API helpers (bulletproof fallback) ─────────────────────
+async function restPut(path, data) {
+  const res = await fetch(`${DATABASE_URL}/${path}.json`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`REST PUT failed: ${res.status}`);
+  return res.json();
+}
+
+async function restDelete(path) {
+  const res = await fetch(`${DATABASE_URL}/${path}.json`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`REST DELETE failed: ${res.status}`);
+}
+
+async function restGet(path) {
+  const res = await fetch(`${DATABASE_URL}/${path}.json`);
+  if (!res.ok) throw new Error(`REST GET failed: ${res.status}`);
+  return res.json();
+}
+
+// ─── Helper: Convert data object to sorted array ─────────────────
+function dataToArray(data) {
+  if (!data || typeof data !== 'object') return [];
   return Object.keys(data)
     .map(key => ({ id: key, ...data[key] }))
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
 
-// ─── Deduplication (kept for backward compat with App.jsx import) ─
+// ─── Deduplication (kept for backward compat) ────────────────────
 export function deduplicateBookings(list) {
   const map = new Map();
   (list || []).forEach(item => {
@@ -43,30 +68,54 @@ export function deduplicateBookings(list) {
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
 
-// ─── Get bookings (one-time read from cloud) ─────────────────────
-export const getLocalBookings = async () => {
-  try {
-    const snapshot = await get(ref(rtdb, 'bookings'));
-    return snapshotToArray(snapshot);
-  } catch (e) {
-    console.error('Failed to read bookings from cloud:', e);
-    return [];
-  }
-};
-
-// ─── Subscribe: Real-time listener (THE core sync mechanism) ─────
+// ─── Subscribe: Real-time listener + REST polling fallback ───────
 export const subscribeBookings = (callback) => {
-  const bookingsRef = ref(rtdb, 'bookings');
+  let lastData = [];
 
-  const unsubscribe = onValue(bookingsRef, (snapshot) => {
-    const bookings = snapshotToArray(snapshot);
-    console.log(`[Firebase Sync] Received ${bookings.length} bookings from cloud`);
+  const emitData = (bookings) => {
+    lastData = bookings;
     callback(bookings);
-  }, (error) => {
-    console.error('[Firebase Sync] Listener error:', error);
-  });
+  };
 
-  return unsubscribe;
+  // 1. Try Firebase SDK real-time listener
+  let sdkListenerActive = false;
+  try {
+    const bookingsRef = ref(rtdb, 'bookings');
+    onValue(bookingsRef, (snapshot) => {
+      sdkListenerActive = true;
+      const bookings = snapshot.exists() ? dataToArray(snapshot.val()) : [];
+      console.log(`[Firebase SDK] Real-time: ${bookings.length} bookings`);
+      emitData(bookings);
+    }, (error) => {
+      console.warn('[Firebase SDK] Listener error, REST polling active:', error.message);
+      sdkListenerActive = false;
+    });
+  } catch (e) {
+    console.warn('[Firebase SDK] Setup failed, using REST only:', e.message);
+  }
+
+  // 2. REST polling fallback (runs every 3s, ensures data even if SDK fails)
+  const poll = async () => {
+    try {
+      const data = await restGet('bookings');
+      const bookings = dataToArray(data);
+      // Only emit if SDK listener is NOT active (avoid double updates)
+      if (!sdkListenerActive) {
+        console.log(`[Firebase REST] Polled: ${bookings.length} bookings`);
+        emitData(bookings);
+      }
+    } catch (e) {
+      console.warn('[Firebase REST] Poll failed:', e.message);
+    }
+  };
+
+  // Initial REST fetch (immediate data while SDK connects)
+  poll();
+  const pollInterval = setInterval(poll, 3000);
+
+  return () => {
+    clearInterval(pollInterval);
+  };
 };
 
 // ─── Save Booking ────────────────────────────────────────────────
@@ -78,12 +127,14 @@ export const saveBooking = async (bookingData) => {
     createdAt: new Date().toISOString(),
   };
 
+  // Try SDK first, fall back to REST
   try {
     await set(ref(rtdb, `bookings/${bookingId}`), payload);
-    console.log(`[Firebase] Saved booking ${bookingId}`);
-  } catch (e) {
-    console.error('[Firebase] Save failed:', e);
-    throw e; // Let the UI know it failed
+    console.log(`[Firebase SDK] Saved ${bookingId}`);
+  } catch (sdkErr) {
+    console.warn(`[Firebase SDK] Save failed, trying REST:`, sdkErr.message);
+    await restPut(`bookings/${bookingId}`, payload);
+    console.log(`[Firebase REST] Saved ${bookingId}`);
   }
 
   return payload;
@@ -91,34 +142,45 @@ export const saveBooking = async (bookingData) => {
 
 // ─── Update Booking ──────────────────────────────────────────────
 export const updateBooking = async (bookingId, bookingData) => {
+  // Read existing data first
+  let existing = {};
   try {
-    // Read current data first to merge
     const snapshot = await get(ref(rtdb, `bookings/${bookingId}`));
-    const existing = snapshot.exists() ? snapshot.val() : {};
-
-    const updated = {
-      ...existing,
-      ...bookingData,
-      id: bookingId,
-      updatedAt: new Date().toISOString(),
-    };
-
-    await set(ref(rtdb, `bookings/${bookingId}`), updated);
-    console.log(`[Firebase] Updated booking ${bookingId}`);
+    existing = snapshot.exists() ? snapshot.val() : {};
   } catch (e) {
-    console.error('[Firebase] Update failed:', e);
-    throw e;
+    try {
+      existing = (await restGet(`bookings/${bookingId}`)) || {};
+    } catch (e2) {}
+  }
+
+  const updated = {
+    ...existing,
+    ...bookingData,
+    id: bookingId,
+    updatedAt: new Date().toISOString(),
+  };
+
+  // Try SDK first, fall back to REST
+  try {
+    await set(ref(rtdb, `bookings/${bookingId}`), updated);
+    console.log(`[Firebase SDK] Updated ${bookingId}`);
+  } catch (sdkErr) {
+    console.warn(`[Firebase SDK] Update failed, trying REST:`, sdkErr.message);
+    await restPut(`bookings/${bookingId}`, updated);
+    console.log(`[Firebase REST] Updated ${bookingId}`);
   }
 };
 
 // ─── Delete Booking ──────────────────────────────────────────────
 export const deleteBooking = async (bookingId) => {
+  // Try SDK first, fall back to REST
   try {
     await remove(ref(rtdb, `bookings/${bookingId}`));
-    console.log(`[Firebase] Deleted booking ${bookingId}`);
-  } catch (e) {
-    console.error('[Firebase] Delete failed:', e);
-    throw e;
+    console.log(`[Firebase SDK] Deleted ${bookingId}`);
+  } catch (sdkErr) {
+    console.warn(`[Firebase SDK] Delete failed, trying REST:`, sdkErr.message);
+    await restDelete(`bookings/${bookingId}`);
+    console.log(`[Firebase REST] Deleted ${bookingId}`);
   }
 };
 
@@ -127,10 +189,12 @@ export const resetAllBookings = async () => {
   try {
     await remove(ref(rtdb, 'bookings'));
     await remove(ref(rtdb, 'deleted_ids'));
-    console.log('[Firebase] All bookings reset');
-  } catch (e) {
-    console.error('[Firebase] Reset failed:', e);
-    throw e;
+    console.log('[Firebase SDK] All bookings reset');
+  } catch (sdkErr) {
+    console.warn('[Firebase SDK] Reset failed, trying REST:', sdkErr.message);
+    await restDelete('bookings');
+    await restDelete('deleted_ids');
+    console.log('[Firebase REST] All bookings reset');
   }
 };
 
