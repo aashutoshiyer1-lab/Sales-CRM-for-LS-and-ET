@@ -118,15 +118,16 @@ export const SalesDashboard = ({
     const paymentBreakdown = {
       Cash: 0,
       Card: 0,
-      'UPI/New Pay': 0,
+      'UPI-New Pay': 0,
       'Prepaid by District': 0,
     };
 
     confirmedBookings.forEach((b) => {
       if (b.payments) {
         Object.entries(b.payments).forEach(([method, amt]) => {
-          if (paymentBreakdown[method] !== undefined) {
-            paymentBreakdown[method] += Number(amt) || 0;
+          const key = method === 'UPI/New Pay' ? 'UPI-New Pay' : method;
+          if (paymentBreakdown[key] !== undefined) {
+            paymentBreakdown[key] += Number(amt) || 0;
           }
         });
       }
@@ -191,7 +192,7 @@ export const SalesDashboard = ({
         b.totalAmount || 0,
         b.payments?.Cash || 0,
         b.payments?.Card || 0,
-        b.payments?.['UPI/New Pay'] || 0,
+        (b.payments?.['UPI-New Pay'] || b.payments?.['UPI/New Pay'] || 0),
         b.payments?.['Prepaid by District'] || 0,
         `"${b.status || 'Confirmed'}"`
       ];

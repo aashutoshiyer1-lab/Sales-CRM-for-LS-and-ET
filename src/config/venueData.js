@@ -6,7 +6,7 @@ export const VENUES = {
 export const PAYMENT_METHODS = [
   'Cash',
   'Card',
-  'UPI/New Pay',
+  'UPI-New Pay',
   'Prepaid by District',
 ];
 

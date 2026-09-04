@@ -47,7 +47,7 @@ export const BookingModal = ({
   const [payments, setPayments] = useState({
     Cash: '',
     Card: '',
-    'UPI/New Pay': '',
+    'UPI-New Pay': '',
     'Prepaid by District': '',
   });
 
@@ -72,7 +72,7 @@ export const BookingModal = ({
       setPayments({
         Cash: prevPay.Cash ? String(prevPay.Cash) : '',
         Card: prevPay.Card ? String(prevPay.Card) : '',
-        'UPI/New Pay': prevPay['UPI/New Pay'] ? String(prevPay['UPI/New Pay']) : '',
+        'UPI-New Pay': prevPay['UPI-New Pay'] ? String(prevPay['UPI-New Pay']) : '',
         'Prepaid by District': prevPay['Prepaid by District'] ? String(prevPay['Prepaid by District']) : '',
       });
     } else {
@@ -89,7 +89,7 @@ export const BookingModal = ({
       setPayments({
         Cash: '',
         Card: '',
-        'UPI/New Pay': '',
+        'UPI-New Pay': '',
         'Prepaid by District': '',
       });
     }
@@ -121,7 +121,7 @@ export const BookingModal = ({
     setPayments({
       Cash: '',
       Card: '',
-      'UPI/New Pay': '',
+      'UPI-New Pay': '',
       'Prepaid by District': '',
       [method]: String(finalTotalAmount)
     });
@@ -142,7 +142,7 @@ export const BookingModal = ({
     const numericPayments = {
       Cash: parseInt(payments.Cash, 10) || 0,
       Card: parseInt(payments.Card, 10) || 0,
-      'UPI/New Pay': parseInt(payments['UPI/New Pay'], 10) || 0,
+      'UPI-New Pay': parseInt(payments['UPI-New Pay'], 10) || 0,
       'Prepaid by District': parseInt(payments['Prepaid by District'], 10) || 0,
     };
 
