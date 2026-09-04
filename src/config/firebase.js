@@ -95,7 +95,8 @@ async function fetchBookingsViaREST() {
     const res = await fetch(`${DATABASE_URL}/bookings.json?auth=${DATABASE_SECRET}`);
     if (!res.ok) return null;
     const data = await res.json();
-    if (!data || data.error) return null;
+    if (data && data.error) return null;
+    if (!data) return [];
     
     const list = Object.keys(data).map(key => ({
       id: key,
