@@ -109,6 +109,31 @@ async function fetchBookingsViaREST() {
 }
 
 /**
+ * Auto-sync local storage bookings to Firebase Cloud if Cloud is missing any items
+ */
+export async function syncLocalBookingsToCloud(cloudList = []) {
+  const localList = getLocalBookings();
+  if (!localList || localList.length === 0) return;
+
+  const cloudIdSet = new Set((cloudList || []).map(b => b.id));
+  const missingInCloud = localList.filter(b => b && b.id && !cloudIdSet.has(b.id));
+
+  if (missingInCloud.length > 0) {
+    for (const item of missingInCloud) {
+      try {
+        await fetch(`${DATABASE_URL}/bookings/${item.id}.json?auth=${DATABASE_SECRET}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item)
+        });
+        const bookingsRtdbRef = ref(rtdb, `bookings/${item.id}`);
+        await set(bookingsRtdbRef, item);
+      } catch (e) {}
+    }
+  }
+}
+
+/**
  * Subscribe to Realtime Data
  */
 export const subscribeBookings = (callback) => {
@@ -125,6 +150,7 @@ export const subscribeBookings = (callback) => {
   // Fetch from Firebase REST API
   fetchBookingsViaREST().then((cloudList) => {
     if (cloudList !== null) {
+      syncLocalBookingsToCloud(cloudList);
       emitMerged(cloudList);
     }
   });
@@ -133,14 +159,16 @@ export const subscribeBookings = (callback) => {
   try {
     const bookingsRtdbRef = ref(rtdb, 'bookings');
     onValue(bookingsRtdbRef, (snapshot) => {
+      let cloudList = [];
       if (snapshot.exists()) {
         const data = snapshot.val();
-        const cloudList = Object.keys(data).map(key => ({
+        cloudList = Object.keys(data).map(key => ({
           id: key,
           ...data[key]
         }));
-        emitMerged(cloudList);
       }
+      syncLocalBookingsToCloud(cloudList);
+      emitMerged(cloudList);
     });
   } catch (e) {}
 
