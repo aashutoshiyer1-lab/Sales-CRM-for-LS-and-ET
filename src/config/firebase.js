@@ -155,14 +155,17 @@ export async function syncLocalBookingsToCloud(cloudList = []) {
   if (missingInCloud.length > 0) {
     for (const item of missingInCloud) {
       try {
+        const itemPayload = { ...item, id: item.id };
+        const bookingsRtdbRef = ref(rtdb, `bookings/${item.id}`);
+        await set(bookingsRtdbRef, itemPayload);
         await fetch(`${DATABASE_URL}/bookings/${item.id}.json?auth=${DATABASE_SECRET}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(item)
+          body: JSON.stringify(itemPayload)
         });
-        const bookingsRtdbRef = ref(rtdb, `bookings/${item.id}`);
-        await set(bookingsRtdbRef, item);
-      } catch (e) {}
+      } catch (e) {
+        console.error('Error syncing local item to cloud:', e);
+      }
     }
   }
 }
@@ -233,16 +236,14 @@ export const subscribeBookings = (callback) => {
  * Save Booking - Single ID everywhere, zero duplication!
  */
 export const saveBooking = (bookingData) => {
+  const bookingId = `booking-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
   const payload = {
+    id: bookingId,
     ...bookingData,
     createdAt: new Date().toISOString(),
   };
 
-  const bookingId = `booking-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
-  const newBooking = {
-    id: bookingId,
-    ...payload,
-  };
+  const newBooking = payload;
 
   // 1. Save to Local Storage with deduplication
   const localList = getLocalBookings();
@@ -250,7 +251,17 @@ export const saveBooking = (bookingData) => {
   saveLocalBookings(updatedList);
   window.dispatchEvent(new Event('storage'));
 
-  // 2. Cloud REST API PUT with single bookingId
+  // 2. Immediate Web SDK write to Realtime DB
+  (async () => {
+    try {
+      const bookingsRtdbRef = ref(rtdb, `bookings/${bookingId}`);
+      await set(bookingsRtdbRef, payload);
+    } catch (e) {
+      console.error('RTDB SDK Write Error:', e);
+    }
+  })();
+
+  // 3. Cloud REST API PUT with single bookingId
   (async () => {
     try {
       await fetch(`${DATABASE_URL}/bookings/${bookingId}.json?auth=${DATABASE_SECRET}`, {
@@ -258,15 +269,9 @@ export const saveBooking = (bookingData) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-    } catch (e) {}
-  })();
-
-  // 3. Web SDK sync with single bookingId
-  (async () => {
-    try {
-      const bookingsRtdbRef = ref(rtdb, `bookings/${bookingId}`);
-      await set(bookingsRtdbRef, payload);
-    } catch (e) {}
+    } catch (e) {
+      console.error('REST PUT Error:', e);
+    }
   })();
 
   // 4. Firestore sync using EXACT SAME doc ID
