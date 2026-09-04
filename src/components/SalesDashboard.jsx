@@ -572,7 +572,7 @@ export const SalesDashboard = ({
                           </span>
                         ) : (
                           <span className="font-black text-emerald-400 text-sm">
-                            ₹{Number(b.totalAmount).toLocaleString()}
+                            ₹{(Number(b.totalAmount) || 0).toLocaleString()}
                           </span>
                         )}
                       </td>

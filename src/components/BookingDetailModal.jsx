@@ -133,7 +133,7 @@ export const BookingDetailModal = ({
                 Total Paid Amount
               </span>
               <span className="text-base font-black text-emerald-400 font-mono">
-                ₹{Number(booking.totalAmount).toLocaleString()}
+                ₹{(Number(booking.totalAmount) || 0).toLocaleString()}
               </span>
             </div>
 
