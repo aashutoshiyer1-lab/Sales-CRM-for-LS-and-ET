@@ -6,7 +6,6 @@ import {
   updateBooking, 
   deleteBooking, 
   resetAllBookings,
-  getLocalBookings,
   deduplicateBookings
 } from './config/firebase';
 import { Navbar } from './components/Navbar';
@@ -33,7 +32,8 @@ export function App() {
     return localStorage.getItem('crm_active_venue') || VENUES.ESCAPE_TIME;
   });
 
-  const [bookings, setBookings] = useState(() => deduplicateBookings(getLocalBookings()));
+  // Start with empty array — cloud data will arrive via onValue listener
+  const [bookings, setBookings] = useState([]);
 
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [selectedSlotInfo, setSelectedSlotInfo] = useState({});
@@ -48,10 +48,10 @@ export function App() {
     }
   }, [isLoggedIn, currentView, activeVenue]);
 
-  // Subscribe to real-time sync with automatic deduplication
+  // Subscribe to real-time Firebase sync — this is the ONLY data source
   useEffect(() => {
     const unsubscribe = subscribeBookings((data) => {
-      setBookings(deduplicateBookings(data));
+      setBookings(data);
     });
     return () => unsubscribe();
   }, []);
@@ -89,25 +89,38 @@ export function App() {
     setIsBookingModalOpen(true);
   };
 
-  // Clean single save/update - zero duplication!
-  const handleSaveOrUpdateBooking = (bookingPayload, bookingId) => {
-    if (bookingId) {
-      updateBooking(bookingId, bookingPayload);
-    } else {
-      saveBooking(bookingPayload);
+  // Save/Update writes to Firebase → onValue listener auto-updates UI
+  const handleSaveOrUpdateBooking = async (bookingPayload, bookingId) => {
+    try {
+      if (bookingId) {
+        await updateBooking(bookingId, bookingPayload);
+      } else {
+        await saveBooking(bookingPayload);
+      }
+      // No need to manually setBookings — the onValue listener does it automatically!
+    } catch (e) {
+      console.error('Save/Update failed:', e);
+      alert('Failed to save booking. Please check your internet connection and try again.');
     }
-    // Update local React state with deduplication
-    setBookings(deduplicateBookings(getLocalBookings()));
   };
 
-  const handleDeleteBooking = (bookingId) => {
-    deleteBooking(bookingId);
-    setBookings(deduplicateBookings(getLocalBookings()));
+  const handleDeleteBooking = async (bookingId) => {
+    try {
+      await deleteBooking(bookingId);
+      // No need to manually setBookings — the onValue listener does it automatically!
+    } catch (e) {
+      console.error('Delete failed:', e);
+      alert('Failed to delete booking. Please check your internet connection and try again.');
+    }
   };
 
-  const handleResetAllBookings = () => {
-    resetAllBookings();
-    setBookings([]);
+  const handleResetAllBookings = async () => {
+    try {
+      await resetAllBookings();
+      // No need to manually setBookings — the onValue listener does it automatically!
+    } catch (e) {
+      console.error('Reset failed:', e);
+    }
   };
 
   if (!isLoggedIn || currentView === 'login') {
