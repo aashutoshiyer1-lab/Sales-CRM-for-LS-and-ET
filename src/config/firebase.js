@@ -112,20 +112,19 @@ async function fetchBookingsViaREST() {
  * Subscribe to Realtime Data
  */
 export const subscribeBookings = (callback) => {
-  // Always emit initial local deduplicated bookings
+  // Always emit initial local deduplicated bookings immediately for instant load
   callback(getLocalBookings());
 
   // Fetch from Firebase REST API
   fetchBookingsViaREST().then((cloudList) => {
-    if (cloudList !== null && cloudList.length > 0) {
-      const local = getLocalBookings();
-      const merged = deduplicateBookings([...cloudList, ...local]);
-      saveLocalBookings(merged);
-      callback(merged);
+    if (cloudList !== null) {
+      const cleanCloudList = deduplicateBookings(cloudList);
+      saveLocalBookings(cleanCloudList);
+      callback(cleanCloudList);
     }
   });
 
-  // Listen to Firebase Realtime DB
+  // Listen to Firebase Realtime DB for instant real-time sync across multiple devices
   try {
     const bookingsRtdbRef = ref(rtdb, 'bookings');
     onValue(bookingsRtdbRef, (snapshot) => {
@@ -135,10 +134,9 @@ export const subscribeBookings = (callback) => {
           id: key,
           ...data[key]
         }));
-        const local = getLocalBookings();
-        const merged = deduplicateBookings([...cloudList, ...local]);
-        saveLocalBookings(merged);
-        callback(merged);
+        const cleanCloudList = deduplicateBookings(cloudList);
+        saveLocalBookings(cleanCloudList);
+        callback(cleanCloudList);
       }
     });
   } catch (e) {}
