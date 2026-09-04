@@ -72,26 +72,13 @@ export function deduplicateBookings(list) {
   const deletedSet = getDeletedIds();
   const map = new Map();
   (list || []).forEach(item => {
-    if (!item) return;
-    const key = item.id || `${item.customerName}_${item.phone}_${item.date}_${item.timeSlot}_${item.venue}`;
+    if (!item || !item.id) return;
     
     // Exclude permanently deleted items
-    if (item.id && deletedSet.has(item.id)) return;
+    if (deletedSet.has(item.id)) return;
 
-    // Check if an identical booking content exists with a different ID
-    const contentFingerprint = `${(item.customerName || '').toLowerCase().trim()}_${(item.phone || '').trim()}_${item.date}_${item.timeSlot}_${item.venue}`;
-    
-    let isDuplicateContent = false;
-    for (let existing of map.values()) {
-      const existingFingerprint = `${(existing.customerName || '').toLowerCase().trim()}_${(existing.phone || '').trim()}_${existing.date}_${existing.timeSlot}_${existing.venue}`;
-      if (existingFingerprint === contentFingerprint) {
-        isDuplicateContent = true;
-        break;
-      }
-    }
-
-    if (!map.has(key) && !isDuplicateContent) {
-      map.set(key, item);
+    if (!map.has(item.id)) {
+      map.set(item.id, item);
     }
   });
   
