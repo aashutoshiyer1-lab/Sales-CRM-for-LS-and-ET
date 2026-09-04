@@ -35,18 +35,50 @@ const db = getFirestore(app);
 const rtdb = getDatabase(app);
 
 const LOCAL_STORAGE_KEY = 'sales_crm_bookings_v7';
+const DELETED_IDS_KEY = 'sales_crm_deleted_ids_v2';
+
+export const getDeletedIds = () => {
+  try {
+    const raw = localStorage.getItem(DELETED_IDS_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch (e) {
+    return new Set();
+  }
+};
+
+export const saveDeletedIdLocally = (id) => {
+  try {
+    const deleted = getDeletedIds();
+    deleted.add(id);
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(deleted)));
+  } catch (e) {}
+};
+
+export const mergeDeletedIds = (idsFromCloud = []) => {
+  try {
+    const deleted = getDeletedIds();
+    (idsFromCloud || []).forEach(id => deleted.add(id));
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(deleted)));
+    return deleted;
+  } catch (e) {
+    return getDeletedIds();
+  }
+};
 
 /**
  * Deduplicate bookings list by ID or unique booking content fingerprint
  */
 export function deduplicateBookings(list) {
+  const deletedSet = getDeletedIds();
   const map = new Map();
   (list || []).forEach(item => {
     if (!item) return;
-    // Primary key: id. Fallback key: content fingerprint
     const key = item.id || `${item.customerName}_${item.phone}_${item.date}_${item.timeSlot}_${item.venue}`;
     
-    // Also check if an identical booking content exists with a different ID
+    // Exclude permanently deleted items
+    if (item.id && deletedSet.has(item.id)) return;
+
+    // Check if an identical booking content exists with a different ID
     const contentFingerprint = `${(item.customerName || '').toLowerCase().trim()}_${(item.phone || '').trim()}_${item.date}_${item.timeSlot}_${item.venue}`;
     
     let isDuplicateContent = false;
@@ -116,8 +148,9 @@ export async function syncLocalBookingsToCloud(cloudList = []) {
   const localList = getLocalBookings();
   if (!localList || localList.length === 0) return;
 
+  const deletedSet = getDeletedIds();
   const cloudIdSet = new Set((cloudList || []).map(b => b.id));
-  const missingInCloud = localList.filter(b => b && b.id && !cloudIdSet.has(b.id));
+  const missingInCloud = localList.filter(b => b && b.id && !cloudIdSet.has(b.id) && !deletedSet.has(b.id));
 
   if (missingInCloud.length > 0) {
     for (const item of missingInCloud) {
@@ -170,6 +203,19 @@ export const subscribeBookings = (callback) => {
       }
       syncLocalBookingsToCloud(cloudList);
       emitMerged(cloudList);
+    });
+  } catch (e) {}
+
+  // Listen to deleted_ids in Firebase
+  try {
+    const deletedRtdbRef = ref(rtdb, 'deleted_ids');
+    onValue(deletedRtdbRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const cloudDeletedIds = Object.keys(snapshot.val());
+        mergeDeletedIds(cloudDeletedIds);
+        saveLocalBookings(getLocalBookings());
+        callback(getLocalBookings());
+      }
     });
   } catch (e) {}
 
@@ -280,6 +326,7 @@ export const updateBooking = (bookingId, bookingData) => {
  * Delete Booking
  */
 export const deleteBooking = (bookingId) => {
+  saveDeletedIdLocally(bookingId);
   const localList = getLocalBookings().filter((b) => b.id !== bookingId);
   saveLocalBookings(localList);
   window.dispatchEvent(new Event('storage'));
@@ -289,6 +336,11 @@ export const deleteBooking = (bookingId) => {
       await fetch(`${DATABASE_URL}/bookings/${bookingId}.json?auth=${DATABASE_SECRET}`, {
         method: 'DELETE'
       });
+      await fetch(`${DATABASE_URL}/deleted_ids/${bookingId}.json?auth=${DATABASE_SECRET}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(true)
+      });
     } catch (e) {}
   })();
 
@@ -296,6 +348,8 @@ export const deleteBooking = (bookingId) => {
     try {
       const bookingRtdbRef = ref(rtdb, `bookings/${bookingId}`);
       await remove(bookingRtdbRef);
+      const deletedRef = ref(rtdb, `deleted_ids/${bookingId}`);
+      await set(deletedRef, true);
     } catch (e) {}
   })();
 
@@ -311,12 +365,16 @@ export const deleteBooking = (bookingId) => {
  * Reset All Bookings
  */
 export const resetAllBookings = () => {
-  saveLocalBookings([]);
+  localStorage.removeItem(LOCAL_STORAGE_KEY);
+  localStorage.removeItem(DELETED_IDS_KEY);
   window.dispatchEvent(new Event('storage'));
 
   (async () => {
     try {
       await fetch(`${DATABASE_URL}/bookings.json?auth=${DATABASE_SECRET}`, {
+        method: 'DELETE'
+      });
+      await fetch(`${DATABASE_URL}/deleted_ids.json?auth=${DATABASE_SECRET}`, {
         method: 'DELETE'
       });
     } catch (e) {}
@@ -326,6 +384,8 @@ export const resetAllBookings = () => {
     try {
       const bookingsRtdbRef = ref(rtdb, 'bookings');
       await remove(bookingsRtdbRef);
+      const deletedRtdbRef = ref(rtdb, 'deleted_ids');
+      await remove(deletedRtdbRef);
     } catch (e) {}
   })();
 
