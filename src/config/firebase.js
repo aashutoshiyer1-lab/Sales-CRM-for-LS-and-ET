@@ -107,11 +107,14 @@ export const saveLocalBookings = (list) => {
 };
 
 /**
- * Fetch latest bookings using Firebase REST API with Database Secret
+ * Fetch latest bookings using Firebase REST API with Database Secret fallback
  */
 async function fetchBookingsViaREST() {
   try {
-    const res = await fetch(`${DATABASE_URL}/bookings.json?auth=${DATABASE_SECRET}`);
+    let res = await fetch(`${DATABASE_URL}/bookings.json`);
+    if (!res.ok) {
+      res = await fetch(`${DATABASE_URL}/bookings.json?auth=${DATABASE_SECRET}`);
+    }
     if (!res.ok) return null;
     const data = await res.json();
     if (data && data.error) return null;
@@ -145,7 +148,7 @@ export async function syncLocalBookingsToCloud(cloudList = []) {
         const itemPayload = { ...item, id: item.id };
         const bookingsRtdbRef = ref(rtdb, `bookings/${item.id}`);
         await set(bookingsRtdbRef, itemPayload);
-        await fetch(`${DATABASE_URL}/bookings/${item.id}.json?auth=${DATABASE_SECRET}`, {
+        await fetch(`${DATABASE_URL}/bookings/${item.id}.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(itemPayload)
@@ -168,18 +171,25 @@ export const subscribeBookings = (callback) => {
     callback(merged);
   };
 
-  // Always emit initial local deduplicated bookings immediately for instant load
+  // 1. Initial emit from LocalStorage for instant load
   callback(getLocalBookings());
 
-  // Fetch from Firebase REST API
-  fetchBookingsViaREST().then((cloudList) => {
-    if (cloudList !== null) {
-      syncLocalBookingsToCloud(cloudList);
-      emitMerged(cloudList);
-    }
-  });
+  const runFetchSync = () => {
+    fetchBookingsViaREST().then((cloudList) => {
+      if (cloudList !== null) {
+        syncLocalBookingsToCloud(cloudList);
+        emitMerged(cloudList);
+      }
+    });
+  };
 
-  // Listen to Firebase Realtime DB for instant real-time sync across multiple devices
+  // 2. Immediate REST fetch
+  runFetchSync();
+
+  // 3. 3-Second Periodic HTTPS Polling Fallback (Guarantees sync across all systems even if WebSockets are blocked by adblockers/firewalls)
+  const pollInterval = setInterval(runFetchSync, 3000);
+
+  // 4. WebSocket Realtime DB Listener
   try {
     const bookingsRtdbRef = ref(rtdb, 'bookings');
     onValue(bookingsRtdbRef, (snapshot) => {
@@ -196,7 +206,7 @@ export const subscribeBookings = (callback) => {
     });
   } catch (e) {}
 
-  // Listen to deleted_ids in Firebase
+  // 5. Listen to deleted_ids in Firebase
   try {
     const deletedRtdbRef = ref(rtdb, 'deleted_ids');
     onValue(deletedRtdbRef, (snapshot) => {
@@ -215,6 +225,7 @@ export const subscribeBookings = (callback) => {
   window.addEventListener('storage', handleStorage);
 
   return () => {
+    clearInterval(pollInterval);
     window.removeEventListener('storage', handleStorage);
   };
 };
