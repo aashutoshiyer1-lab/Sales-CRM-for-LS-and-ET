@@ -132,7 +132,7 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
+    <div className="min-h-screen bg-[#f8f6f0] text-slate-900 flex flex-col font-sans selection:bg-amber-500 selection:text-white">
       
       {/* Navbar */}
       <Navbar

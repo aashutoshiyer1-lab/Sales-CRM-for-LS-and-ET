@@ -15,6 +15,7 @@ export const OFFERS = [
   { id: 'high_price_retention', name: 'Customer Going back due to high prices (10% OFF)', percentage: 10 },
   { id: 'birthday_package', name: 'Birthday Package (10% OFF)', percentage: 10 },
   { id: 'second_game', name: 'Second Game Special (20% OFF)', percentage: 20 },
+  { id: 'cross_promotion', name: 'Cross Promotion Coupon (30% OFF)', percentage: 30, venue: VENUES.ESCAPE_TIME },
   { id: 'complimentary', name: 'Complimentary Game (Kids Under 6 Years - 100% OFF)', percentage: 100 },
 ];
 

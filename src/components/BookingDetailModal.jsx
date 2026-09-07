@@ -30,24 +30,24 @@ export const BookingDetailModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-      <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+      <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
         
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
           <div className="flex items-center gap-3">
             <div className={`p-2.5 rounded-2xl border ${
-              isEscape ? 'bg-red-950 text-amber-400 border-amber-500/40' : 'bg-cyan-950 text-cyan-400 border-cyan-500/40'
+              isEscape ? 'bg-red-50 text-red-600 border-red-200 shadow-sm' : 'bg-cyan-50 text-cyan-600 border-cyan-200 shadow-sm'
             }`}>
               {isEscape ? <Lock className="w-5 h-5" /> : <Gamepad2 className="w-5 h-5" />}
             </div>
             <div>
               <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded font-black ${
-                isEscape ? 'bg-amber-500/20 text-amber-300' : 'bg-cyan-500/20 text-cyan-300'
+                isEscape ? 'bg-red-100 text-red-800' : 'bg-cyan-100 text-cyan-800'
               }`}>
                 {booking.venue}
               </span>
-              <h3 className="text-base font-extrabold text-white mt-0.5">
+              <h3 className="text-base font-extrabold text-slate-900 mt-0.5">
                 {booking.gameName}
               </h3>
             </div>
@@ -55,7 +55,7 @@ export const BookingDetailModal = ({
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+            className="p-1.5 rounded-xl bg-slate-100 text-slate-500 hover:text-slate-900 hover:bg-slate-200 transition-all"
           >
             <X className="w-4 h-4" />
           </button>
@@ -64,60 +64,60 @@ export const BookingDetailModal = ({
         {/* Customer & Slot Details */}
         <div className="space-y-3 text-xs">
           
-          <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
-            <div className="flex items-center justify-between text-slate-300">
-              <span className="flex items-center gap-2 font-semibold">
-                <User className="w-4 h-4 text-cyan-400" />
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between text-slate-700">
+              <span className="flex items-center gap-2 font-bold">
+                <User className="w-4 h-4 text-cyan-600" />
                 Customer:
               </span>
-              <span className="font-extrabold text-white text-sm">{booking.customerName}</span>
+              <span className="font-extrabold text-slate-900 text-sm">{booking.customerName}</span>
             </div>
-            <div className="flex items-center justify-between text-slate-300">
-              <span className="flex items-center gap-2 font-semibold">
-                <Phone className="w-4 h-4 text-emerald-400" />
+            <div className="flex items-center justify-between text-slate-700">
+              <span className="flex items-center gap-2 font-bold">
+                <Phone className="w-4 h-4 text-emerald-600" />
                 Phone:
               </span>
-              <span className="font-mono text-slate-200 font-bold">{booking.phone}</span>
+              <span className="font-mono text-slate-900 font-bold">{booking.phone}</span>
             </div>
             {booking.email && (
-              <div className="flex items-center justify-between text-slate-300">
-                <span className="flex items-center gap-2 font-semibold">
-                  <Mail className="w-4 h-4 text-amber-400" />
+              <div className="flex items-center justify-between text-slate-700">
+                <span className="flex items-center gap-2 font-bold">
+                  <Mail className="w-4 h-4 text-amber-600" />
                   Email:
                 </span>
-                <span className="font-mono text-slate-200">{booking.email}</span>
+                <span className="font-mono text-slate-800 font-medium">{booking.email}</span>
               </div>
             )}
           </div>
 
           <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800">
-              <div className="text-[10px] text-slate-400 font-semibold">Date</div>
-              <div className="font-mono font-bold text-slate-200 text-xs mt-0.5">{booking.date}</div>
+            <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
+              <div className="text-[10px] text-slate-500 font-bold uppercase">Date</div>
+              <div className="font-mono font-bold text-slate-900 text-xs mt-0.5">{booking.date}</div>
             </div>
-            <div className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800">
-              <div className="text-[10px] text-slate-400 font-semibold">Time Slot</div>
-              <div className="font-mono font-bold text-cyan-400 text-xs mt-0.5">{booking.timeSlot}</div>
+            <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
+              <div className="text-[10px] text-slate-500 font-bold uppercase">Time Slot</div>
+              <div className="font-mono font-bold text-cyan-700 text-xs mt-0.5">{booking.timeSlot}</div>
             </div>
-            <div className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800">
-              <div className="text-[10px] text-slate-400 font-semibold">Players</div>
-              <div className="font-mono font-bold text-amber-400 text-xs mt-0.5">{booking.paxCount} pax</div>
+            <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
+              <div className="text-[10px] text-slate-500 font-bold uppercase">Players</div>
+              <div className="font-mono font-bold text-amber-700 text-xs mt-0.5">{booking.paxCount} pax</div>
             </div>
           </div>
 
           {/* Discount & Reference Info */}
           {booking.offerId && booking.offerId !== 'none' && (
-            <div className="p-3 rounded-2xl bg-amber-950/60 border border-amber-500/50 space-y-1 font-mono text-[11px]">
-              <div className="flex items-center justify-between text-amber-300 font-bold">
+            <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 space-y-1 font-mono text-[11px]">
+              <div className="flex items-center justify-between text-amber-900 font-bold">
                 <span className="flex items-center gap-1">
-                  <Tag className="w-3.5 h-3.5" /> Offer:
+                  <Tag className="w-3.5 h-3.5 text-amber-600" /> Offer:
                 </span>
                 <span>{booking.offerName}</span>
               </div>
               {booking.referencePerson && (
-                <div className="flex items-center justify-between text-emerald-400 font-bold">
+                <div className="flex items-center justify-between text-emerald-800 font-bold">
                   <span className="flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5" /> Approval Ref:
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Approval Ref:
                   </span>
                   <span>{booking.referencePerson}</span>
                 </div>
@@ -126,28 +126,28 @@ export const BookingDetailModal = ({
           )}
 
           {/* Payment Split Breakdown */}
-          <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <span className="font-extrabold text-slate-200 flex items-center gap-1.5">
-                <Receipt className="w-4 h-4 text-emerald-400" />
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              <span className="font-extrabold text-slate-800 flex items-center gap-1.5">
+                <Receipt className="w-4 h-4 text-emerald-600" />
                 Total Paid Amount
               </span>
-              <span className="text-base font-black text-emerald-400 font-mono">
+              <span className="text-base font-black text-emerald-700 font-mono">
                 ₹{(Number(booking.totalAmount) || 0).toLocaleString()}
               </span>
             </div>
 
-            <div className="text-[11px] font-bold text-slate-400">Split Breakdown:</div>
+            <div className="text-[11px] font-bold text-slate-500">Split Breakdown:</div>
             <div className="grid grid-cols-2 gap-2 font-mono">
               {Object.entries(booking.payments || {}).map(([method, amt]) => (
                 <div 
                   key={method} 
                   className={`p-2 rounded-xl border flex items-center justify-between text-[11px] ${
-                    amt > 0 ? 'bg-slate-900 border-slate-700 text-slate-200 font-bold' : 'bg-slate-950/40 border-slate-800/40 text-slate-600'
+                    amt > 0 ? 'bg-white border-slate-300 text-slate-900 font-bold shadow-sm' : 'bg-slate-100/50 border-slate-200 text-slate-400'
                   }`}
                 >
                   <span className="truncate">{method}</span>
-                  <span className="font-bold text-emerald-400">₹{amt}</span>
+                  <span className="font-bold text-emerald-700">₹{amt}</span>
                 </div>
               ))}
             </div>
@@ -156,10 +156,10 @@ export const BookingDetailModal = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+        <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
           <button
             onClick={handleDelete}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-red-400 hover:text-red-300 bg-red-950/40 border border-red-900/60 transition-all"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-all"
           >
             <Trash2 className="w-4 h-4" />
             <span>Delete Booking</span>
@@ -167,7 +167,7 @@ export const BookingDetailModal = ({
           
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-xl text-xs font-bold bg-slate-800 text-slate-200 hover:bg-slate-700 transition-all"
+            className="px-5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-all"
           >
             Close Receipt
           </button>
