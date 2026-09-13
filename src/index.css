@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    background-color: #f8f6f0;
+    background-color: #fffff0;
     @apply text-slate-900 min-h-screen overflow-x-hidden;
   }
 

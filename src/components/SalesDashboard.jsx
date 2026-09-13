@@ -112,6 +112,16 @@ export const SalesDashboard = ({
     });
   }, [bookings, venueToggle, dateRangeMode, customStartDate, customEndDate, searchQuery, dateFiltersMemo]);
 
+  // Chronological Sorting: Date ascending (earliest date first), TimeSlot ascending (11:00 AM before 11:15 AM before 11:30 AM...)
+  const sortedBookings = useMemo(() => {
+    return [...filteredBookings].sort((a, b) => {
+      if (a.date !== b.date) {
+        return (a.date || '').localeCompare(b.date || '');
+      }
+      return (a.timeSlot || '').localeCompare(b.timeSlot || '');
+    });
+  }, [filteredBookings]);
+
   // Metrics - EXCLUDES Pending games from Total Revenue, Total Players, and Total Games counts!
   const metrics = useMemo(() => {
     const confirmedBookings = filteredBookings.filter(b => b.status !== 'Pending');
@@ -522,14 +532,14 @@ export const SalesDashboard = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredBookings.length === 0 ? (
+              {sortedBookings.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="px-6 py-12 text-center text-slate-500 font-mono font-medium">
                     No game transactions found for the selected filter.
                   </td>
                 </tr>
               ) : (
-                filteredBookings.map((b) => {
+                sortedBookings.map((b) => {
                   const isEscape = b.venue === VENUES.ESCAPE_TIME;
                   const isPending = b.status === 'Pending';
 

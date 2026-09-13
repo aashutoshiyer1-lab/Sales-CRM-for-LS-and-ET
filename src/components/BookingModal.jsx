@@ -119,6 +119,15 @@ export const BookingModal = ({
     }
   }, [isOpen, editingBooking, initialSlot]);
 
+  // Auto-adapt timeSlot whenever date changes to match valid operating hours for that day (weekday vs weekend)
+  useEffect(() => {
+    if (!isOpen || dynamicTimeSlotOptions.length === 0) return;
+    const isValidSlot = dynamicTimeSlotOptions.some(s => s.value === timeSlot);
+    if (!isValidSlot) {
+      setTimeSlot(dynamicTimeSlotOptions[0].value);
+    }
+  }, [date, dynamicTimeSlotOptions, isOpen]);
+
   // Pricing Calculation
   const pricingInfo = calculatePricing({
     venue: activeVenue,

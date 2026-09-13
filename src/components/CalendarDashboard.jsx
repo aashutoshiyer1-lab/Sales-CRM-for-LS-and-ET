@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { VENUES, VENUE_DETAILS, getOperatingHours } from '../config/venueData';
 import { getGameCategoryLabel } from '../utils/pricingEngine';
 import { 
@@ -16,7 +16,7 @@ import {
   Filter,
   Layers,
   ShieldCheck,
-  Navigation
+  Grid
 } from 'lucide-react';
 
 export const CalendarDashboard = ({ 
@@ -103,29 +103,23 @@ export const CalendarDashboard = ({
     return map;
   }, [activeBookings]);
 
-  // List all pending games across venue & system for quick dropdown navigation
-  const allPendingBookings = useMemo(() => {
-    return bookings.filter(b => b.status === 'Pending');
-  }, [bookings]);
+  // List pending games strictly for the CURRENT SELECTED DATE & ACTIVE VENUE
+  const dayPendingBookings = useMemo(() => {
+    return activeBookings.filter(b => b.status === 'Pending');
+  }, [activeBookings]);
 
   // Handle navigating directly to a pending booking from dropdown
   const handleJumpToPending = (bookingId) => {
     if (!bookingId) return;
-    const target = bookings.find(b => b.id === bookingId);
+    const target = activeBookings.find(b => b.id === bookingId);
     if (!target) return;
-
-    if (target.date) {
-      setSelectedDate(target.date);
-    }
     
-    // Smooth scroll to slot row or trigger edit modal
-    setTimeout(() => {
-      const slotElement = document.getElementById(`slot-row-${target.timeSlot}`);
-      if (slotElement) {
-        slotElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-      onEditBooking(target);
-    }, 100);
+    // Smooth scroll to slot card or trigger edit modal
+    const slotElement = document.getElementById(`slot-card-${target.timeSlot}`);
+    if (slotElement) {
+      slotElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    onEditBooking(target);
   };
 
   // Exclude Pending Games from Day Revenue, Total Players, and Total Games metrics
@@ -167,7 +161,7 @@ export const CalendarDashboard = ({
               Daily Games Schedule
             </h1>
             <p className="text-xs text-slate-600 mt-1 font-medium">
-              15-minute slot schedule with horizontal concurrent block stacking (clubbing)
+              15-minute slot grid layout with side-by-side vertical time slot blocks
             </p>
           </div>
 
@@ -229,8 +223,8 @@ export const CalendarDashboard = ({
           </button>
         </div>
 
-        {/* Pending Games Quick Jump Dropdown */}
-        {allPendingBookings.length > 0 && (
+        {/* Pending Games Quick Jump Dropdown - Filtered STRICTLY for the Selected Date */}
+        {dayPendingBookings.length > 0 && (
           <div className="flex items-center gap-2 bg-amber-50 p-2 rounded-2xl border border-amber-300 shadow-sm w-full lg:w-auto">
             <Clock3 className="w-4 h-4 text-amber-700 ml-1 shrink-0" />
             <select
@@ -239,11 +233,11 @@ export const CalendarDashboard = ({
               defaultValue=""
             >
               <option value="" disabled>
-                -- Navigate to Pending Entry ({allPendingBookings.length}) --
+                -- Today's Pending Entries ({dayPendingBookings.length}) --
               </option>
-              {allPendingBookings.map((pb) => (
+              {dayPendingBookings.map((pb) => (
                 <option key={pb.id} value={pb.id}>
-                  {pb.customerName} - {pb.gameName} ({pb.date} @ {pb.timeSlot})
+                  {pb.customerName} - {pb.gameName} ({pb.timeSlot})
                 </option>
               ))}
             </select>
@@ -283,26 +277,22 @@ export const CalendarDashboard = ({
         </div>
       </div>
 
-      {/* 15-Minute Slot Timeline Grid */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
+      {/* Side-by-Side Vertical Grid Time Slots (No Horizontal Scrolling) */}
+      <div className="space-y-4">
         
-        <div className="grid grid-cols-12 px-6 py-4 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider">
-          <div className="col-span-3 sm:col-span-2 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-cyan-600" />
-            <span>Time Slot</span>
+        {/* Section Header */}
+        <div className="flex items-center justify-between px-2">
+          <div className="flex items-center gap-2 text-sm font-extrabold text-slate-800">
+            <Grid className="w-4 h-4 text-cyan-600" />
+            <span>Time Slots Schedule Grid ({timeSlots.length} Slots)</span>
           </div>
-          <div className="col-span-9 sm:col-span-10 flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-amber-600" />
-              <span>Concurrent Games Stack (15-min Clubbing)</span>
-            </span>
-            <span className="text-[11px] text-slate-500 normal-case font-mono font-semibold">
-              Click slot row to add game
-            </span>
-          </div>
+          <span className="text-xs text-slate-500 font-mono font-medium">
+            Side-by-side time slot blocks • Click card or + to add game
+          </span>
         </div>
 
-        <div className="divide-y divide-slate-100 max-h-[700px] overflow-y-auto">
+        {/* Multi-Column Side-by-Side Grid Layout */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
           {timeSlots.map((slot) => {
             const slotBookings = slotBookingsMap[slot.timeStr] || [];
             const isTopHour = slot.timeStr.endsWith(':00');
@@ -310,140 +300,150 @@ export const CalendarDashboard = ({
             return (
               <div
                 key={slot.timeStr}
-                id={`slot-row-${slot.timeStr}`}
-                className={`grid grid-cols-12 px-6 py-4 items-center hover:bg-slate-50/80 transition-colors group ${
-                  isTopHour ? 'bg-slate-50/50 font-semibold' : ''
+                id={`slot-card-${slot.timeStr}`}
+                className={`rounded-2xl border transition-all p-3.5 flex flex-col justify-between space-y-3 ${
+                  slotBookings.length > 0
+                    ? 'bg-white border-slate-300 shadow-md'
+                    : isTopHour
+                      ? 'bg-slate-100/90 border-slate-300 shadow-sm'
+                      : 'bg-slate-50/80 border-slate-200 hover:border-slate-300 hover:bg-white'
                 }`}
               >
-                <div className="col-span-3 sm:col-span-2 flex items-center gap-2">
-                  <span className={`font-mono text-xs ${
-                    isTopHour ? 'text-cyan-700 font-black text-sm' : 'text-slate-700 font-bold'
-                  }`}>
-                    {slot.displayLabel}
-                  </span>
-                  {slotBookings.length > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-extrabold bg-cyan-100 text-cyan-800 border border-cyan-300">
-                      {slotBookings.length}
+                {/* Slot Header */}
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Clock className={`w-3.5 h-3.5 ${isTopHour ? 'text-cyan-700' : 'text-slate-500'}`} />
+                    <span className={`font-mono ${isTopHour ? 'text-sm font-black text-cyan-800' : 'text-xs font-bold text-slate-800'}`}>
+                      {slot.displayLabel}
                     </span>
-                  )}
-                </div>
+                  </div>
 
-                <div className="col-span-9 sm:col-span-10 flex items-center gap-4 overflow-x-auto py-1.5">
-                  
-                  {slotBookings.length === 0 ? (
+                  <div className="flex items-center gap-1.5">
+                    {slotBookings.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-cyan-100 text-cyan-800 border border-cyan-300">
+                        {slotBookings.length} {slotBookings.length === 1 ? 'game' : 'games'}
+                      </span>
+                    )}
                     <button
                       onClick={() => onSelectSlot(selectedDate, slot.timeStr)}
-                      className="opacity-0 group-hover:opacity-100 flex items-center gap-1.5 text-xs font-bold text-cyan-700 hover:text-cyan-800 py-2 px-4 rounded-xl bg-cyan-50 border border-cyan-200 transition-all shadow-sm"
+                      className="p-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border border-cyan-200 text-[10px] font-bold flex items-center gap-0.5 transition-all shadow-sm"
+                      title={`Book ${slot.displayLabel} slot`}
                     >
-                      <Plus className="w-4 h-4" />
-                      <span>Book {slot.displayLabel}</span>
+                      <Plus className="w-3 h-3" />
+                      <span>Book</span>
                     </button>
+                  </div>
+                </div>
+
+                {/* Slot Games Vertical Stack */}
+                <div className="space-y-2.5 flex-1 min-h-[60px]">
+                  {slotBookings.length === 0 ? (
+                    <div 
+                      onClick={() => onSelectSlot(selectedDate, slot.timeStr)}
+                      className="h-full border-2 border-dashed border-slate-200 rounded-xl p-3 flex items-center justify-center text-slate-400 hover:text-cyan-700 hover:border-cyan-300 hover:bg-cyan-50/50 transition-all cursor-pointer group"
+                    >
+                      <span className="text-[11px] font-bold flex items-center gap-1">
+                        <Plus className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                        Available Slot
+                      </span>
+                    </div>
                   ) : (
-                    <>
-                      {slotBookings.map((b) => {
-                        const isEscape = b.venue === VENUES.ESCAPE_TIME;
-                        const isPending = b.status === 'Pending';
+                    slotBookings.map((b) => {
+                      const isEscape = b.venue === VENUES.ESCAPE_TIME;
+                      const isPending = b.status === 'Pending';
 
-                        return (
-                          <div
-                            key={b.id}
-                            className={`flex-1 min-w-[280px] max-w-[380px] p-4 rounded-2xl border-2 transition-all shadow-md relative ${
-                              isPending
-                                ? 'bg-amber-50 border-amber-400 text-slate-900 shadow-amber-100'
-                                : isEscape
-                                  ? 'bg-red-50/60 border-red-300 text-slate-900 shadow-red-50'
-                                  : 'bg-cyan-50/60 border-cyan-300 text-slate-900 shadow-cyan-50'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <span className={`text-xs font-black uppercase px-2.5 py-0.5 rounded-full font-mono ${
-                                isEscape ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-cyan-100 text-cyan-800 border border-cyan-200'
-                              }`}>
-                                {b.gameName} ({getGameCategoryLabel(b)})
+                      return (
+                        <div
+                          key={b.id}
+                          className={`p-3 rounded-xl border-2 transition-all shadow-sm space-y-2 ${
+                            isPending
+                              ? 'bg-amber-50 border-amber-400 text-slate-900 shadow-amber-100'
+                              : isEscape
+                                ? 'bg-red-50/60 border-red-300 text-slate-900 shadow-red-50'
+                                : 'bg-cyan-50/60 border-cyan-300 text-slate-900 shadow-cyan-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1">
+                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full font-mono truncate ${
+                              isEscape ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                            }`}>
+                              {b.gameName} ({getGameCategoryLabel(b)})
+                            </span>
+
+                            {isPending ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onEditBooking(b); }}
+                                className="inline-flex items-center gap-1 text-[9px] font-black text-amber-900 bg-amber-200 px-1.5 py-0.5 rounded border border-amber-400 hover:bg-amber-300 cursor-pointer shrink-0 shadow-sm"
+                                title="Click to complete payment"
+                              >
+                                <Clock3 className="w-2.5 h-2.5 text-amber-700" />
+                                PENDING
+                              </button>
+                            ) : (
+                              <span className="text-xs font-mono font-black text-emerald-700 shrink-0">
+                                ₹{Number(b.totalAmount).toLocaleString()}
                               </span>
+                            )}
+                          </div>
 
-                              {isPending ? (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); onEditBooking(b); }}
-                                  className="inline-flex items-center gap-1 text-[10px] font-black text-amber-900 bg-amber-200 px-2 py-0.5 rounded-md border border-amber-400 hover:bg-amber-300 cursor-pointer shadow-sm"
-                                  title="Click to complete payment"
-                                >
-                                  <Clock3 className="w-3 h-3 text-amber-700" />
-                                  PAYMENT PENDING
-                                </button>
-                              ) : (
-                                <span className="text-sm font-mono font-black text-emerald-700">
-                                  ₹{Number(b.totalAmount).toLocaleString()}
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="text-sm font-extrabold text-slate-900 truncate">
+                          <div>
+                            <div className="text-xs font-extrabold text-slate-900 truncate">
                               {b.customerName}
                             </div>
-                            <div className="text-xs text-slate-600 font-mono font-medium">
+                            <div className="text-[11px] text-slate-600 font-mono font-medium">
                               {b.phone}
                             </div>
+                          </div>
 
-                            {b.offerId && b.offerId !== 'none' && (
-                              <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                                <div className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
-                                  <Tag className="w-2.5 h-2.5" />
-                                  {b.offerName}
+                          {b.offerId && b.offerId !== 'none' && (
+                            <div className="flex flex-wrap items-center gap-1">
+                              <div className="inline-flex items-center gap-0.5 text-[9px] font-mono font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
+                                <Tag className="w-2 h-2" />
+                                {b.offerName}
+                              </div>
+                              {b.referencePerson && (
+                                <div className="inline-flex items-center gap-0.5 text-[9px] font-mono font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">
+                                  <ShieldCheck className="w-2 h-2 text-emerald-600" />
+                                  Ref: {b.referencePerson}
                                 </div>
-                                {b.referencePerson && (
-                                  <div className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
-                                    <ShieldCheck className="w-2.5 h-2.5 text-emerald-600" />
-                                    Ref: {b.referencePerson}
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                              )}
+                            </div>
+                          )}
 
-                            <div className="flex items-center justify-between text-xs text-slate-700 mt-3 pt-2.5 border-t border-slate-200">
-                              <span className="flex items-center gap-1 font-mono font-bold">
-                                <Users className="w-3.5 h-3.5 text-cyan-600" />
-                                {b.paxCount} Players
-                              </span>
+                          <div className="flex items-center justify-between text-[11px] text-slate-700 pt-2 border-t border-slate-200">
+                            <span className="flex items-center gap-1 font-mono font-bold">
+                              <Users className="w-3 h-3 text-cyan-600" />
+                              {b.paxCount} Players
+                            </span>
 
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); onEditBooking(b); }}
-                                  className="p-1.5 rounded-lg bg-white text-amber-700 hover:text-amber-800 hover:bg-amber-50 border border-slate-200 shadow-sm"
-                                  title="Edit Game Entry"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); onSelectBooking(b); }}
-                                  className="p-1.5 rounded-lg bg-white text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border border-slate-200 shadow-sm"
-                                  title="View Receipt"
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); onDeleteBooking(b.id); }}
-                                  className="p-1.5 rounded-lg bg-white text-red-600 hover:text-red-700 hover:bg-red-50 border border-slate-200 shadow-sm"
-                                  title="Delete Game Entry"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onEditBooking(b); }}
+                                className="p-1 rounded bg-white text-amber-700 hover:text-amber-800 hover:bg-amber-50 border border-slate-200 shadow-sm"
+                                title="Edit Game Entry"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onSelectBooking(b); }}
+                                className="p-1 rounded bg-white text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border border-slate-200 shadow-sm"
+                                title="View Receipt"
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onDeleteBooking(b.id); }}
+                                className="p-1 rounded bg-white text-red-600 hover:text-red-700 hover:bg-red-50 border border-slate-200 shadow-sm"
+                                title="Delete Game Entry"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
                             </div>
                           </div>
-                        );
-                      })}
-
-                      <button
-                        onClick={() => onSelectSlot(selectedDate, slot.timeStr)}
-                        className="p-3.5 rounded-2xl bg-white border border-slate-300 text-slate-700 hover:text-cyan-600 hover:border-cyan-500 transition-all shrink-0 shadow-sm"
-                        title="Add concurrent game entry to this slot"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </>
+                        </div>
+                      );
+                    })
                   )}
-
                 </div>
               </div>
             );
