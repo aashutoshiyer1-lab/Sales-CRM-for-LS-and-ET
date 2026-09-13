@@ -155,6 +155,7 @@ export function App() {
         {currentView === 'calendar' && (
           <CalendarDashboard
             activeVenue={activeVenue}
+            setActiveVenue={setActiveVenue}
             bookings={bookings}
             onSelectSlot={(date, slot) => handleOpenNewBookingModal(date, slot)}
             onSelectBooking={(b) => setInspectBooking(b)}

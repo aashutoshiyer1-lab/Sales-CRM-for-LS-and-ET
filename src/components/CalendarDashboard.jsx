@@ -21,6 +21,7 @@ import {
 
 export const CalendarDashboard = ({ 
   activeVenue, 
+  setActiveVenue,
   bookings = [], 
   onSelectSlot, 
   onSelectBooking, 
@@ -103,23 +104,29 @@ export const CalendarDashboard = ({
     return map;
   }, [activeBookings]);
 
-  // List pending games strictly for the CURRENT SELECTED DATE & ACTIVE VENUE
+  // List pending games strictly for the CURRENT SELECTED DATE across ALL VENUES
   const dayPendingBookings = useMemo(() => {
-    return activeBookings.filter(b => b.status === 'Pending');
-  }, [activeBookings]);
+    return bookings.filter(b => b.date === selectedDate && b.status === 'Pending');
+  }, [bookings, selectedDate]);
 
-  // Handle navigating directly to a pending booking from dropdown
+  // Handle navigating directly to a pending booking from dropdown across both venues
   const handleJumpToPending = (bookingId) => {
     if (!bookingId) return;
-    const target = activeBookings.find(b => b.id === bookingId);
+    const target = bookings.find(b => b.id === bookingId);
     if (!target) return;
     
-    // Smooth scroll to slot card or trigger edit modal
-    const slotElement = document.getElementById(`slot-card-${target.timeSlot}`);
-    if (slotElement) {
-      slotElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Switch venue if needed
+    if (target.venue && target.venue !== activeVenue && setActiveVenue) {
+      setActiveVenue(target.venue);
     }
-    onEditBooking(target);
+
+    setTimeout(() => {
+      const slotElement = document.getElementById(`slot-card-${target.timeSlot}`);
+      if (slotElement) {
+        slotElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      onEditBooking(target);
+    }, 50);
   };
 
   // Exclude Pending Games from Day Revenue, Total Players, and Total Games metrics
@@ -237,7 +244,7 @@ export const CalendarDashboard = ({
               </option>
               {dayPendingBookings.map((pb) => (
                 <option key={pb.id} value={pb.id}>
-                  {pb.customerName} - {pb.gameName} ({pb.timeSlot})
+                  [{pb.venue || 'Escape Time'}] {pb.customerName} - {pb.gameName} ({pb.timeSlot})
                 </option>
               ))}
             </select>
