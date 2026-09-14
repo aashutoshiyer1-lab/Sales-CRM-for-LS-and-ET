@@ -97,7 +97,7 @@ export const BookingDetailModal = ({
             </div>
             <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
               <div className="text-[10px] text-slate-500 font-bold uppercase">Time Slot</div>
-              <div className="font-mono font-bold text-cyan-700 text-xs mt-0.5">{booking.timeSlot}</div>
+              <div className="font-mono font-black text-slate-950 text-xs mt-0.5">{booking.timeSlot}</div>
             </div>
             <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
               <div className="text-[10px] text-slate-500 font-bold uppercase">Players</div>

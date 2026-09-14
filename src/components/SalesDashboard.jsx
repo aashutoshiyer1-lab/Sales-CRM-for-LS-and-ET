@@ -23,7 +23,9 @@ import {
   ShieldCheck,
   Gamepad2,
   Lock,
-  Receipt
+  Receipt,
+  Copy,
+  Check
 } from 'lucide-react';
 
 export const SalesDashboard = ({ 
@@ -39,6 +41,7 @@ export const SalesDashboard = ({
   const [customEndDate, setCustomEndDate] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [highlightedBookingId, setHighlightedBookingId] = useState(null);
 
   const tableRef = useRef(null);
@@ -237,6 +240,83 @@ export const SalesDashboard = ({
     document.body.removeChild(link);
   };
 
+  // Copy Sales Data of selected view/day to Clipboard
+  const handleCopyData = () => {
+    if (sortedBookings.length === 0) {
+      alert('No sales data available to copy for the selected filter.');
+      return;
+    }
+
+    const filterLabel = dateRangeMode === 'TODAY' 
+      ? dateFiltersMemo.todayStr 
+      : dateRangeMode === 'YESTERDAY' 
+        ? dateFiltersMemo.yesterdayStr 
+        : dateRangeMode.replace('_', ' ');
+
+    let copyText = `📊 SALES & REVENUE REPORT (${venueToggle} - ${filterLabel})\n`;
+    copyText += `Total Revenue: ₹${metrics.totalRevenue.toLocaleString()} | Total Players: ${metrics.totalPlayers} | Total Games: ${metrics.totalGamesCount}\n`;
+    copyText += `--------------------------------------------------\n\n`;
+
+    sortedBookings.forEach((b, idx) => {
+      const isPending = b.status === 'Pending';
+      const statusStr = isPending ? '[PENDING]' : '[CONFIRMED]';
+      const paidAmount = isPending ? 'Pending' : `₹${Number(b.totalAmount || 0).toLocaleString()}`;
+      const offerStr = (b.offerId && b.offerId !== 'none') ? ` (Offer: ${b.offerName})` : '';
+      const refStr = b.referencePerson ? ` [Ref: ${b.referencePerson}]` : '';
+
+      let paymentDetailsStr = '';
+      if (!isPending && b.payments) {
+        const parts = Object.entries(b.payments)
+          .filter(([_, amt]) => Number(amt) > 0)
+          .map(([m, amt]) => `${m}: ₹${amt}`);
+        if (parts.length > 0) {
+          paymentDetailsStr = ` (${parts.join(', ')})`;
+        }
+      }
+
+      copyText += `${idx + 1}. [${b.timeSlot}] ${b.date} | ${b.venue}\n`;
+      copyText += `   🎮 Game: ${b.gameName} (${getGameCategoryLabel(b)})\n`;
+      copyText += `   👤 Customer: ${b.customerName} (${b.phone || 'N/A'})\n`;
+      copyText += `   👥 Players: ${b.paxCount}${offerStr}${refStr}\n`;
+      copyText += `   💰 Amount: ${paidAmount}${paymentDetailsStr} ${statusStr}\n\n`;
+    });
+
+    copyText += `--------------------------------------------------\n`;
+    copyText += `Generated on ${new Date().toLocaleString()}\n`;
+
+    const fallbackCopy = (text) => {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      let success = false;
+      try {
+        success = document.execCommand('copy');
+      } catch (err) {
+        success = false;
+      }
+      document.body.removeChild(textarea);
+      return success;
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(copyText).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      }).catch(() => {
+        fallbackCopy(copyText);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      });
+    } else {
+      fallbackCopy(copyText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
   const handleConfirmReset = () => {
     onResetAllBookings();
     setShowResetConfirm(false);
@@ -268,9 +348,27 @@ export const SalesDashboard = ({
           <button
             onClick={handleExportToExcel}
             className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md transition-all active:scale-95"
+            title="Download CSV / Excel File"
           >
             <Download className="w-4 h-4 stroke-[2.5]" />
             <span>Export Excel / CSV Report</span>
+          </button>
+
+          <button
+            onClick={handleCopyData}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold shadow-md transition-all active:scale-95 ${
+              copied
+                ? 'bg-emerald-600 text-white ring-2 ring-emerald-300'
+                : 'bg-slate-900 hover:bg-slate-800 text-white'
+            }`}
+            title="Copy entire day sales text to clipboard"
+          >
+            {copied ? (
+              <Check className="w-4 h-4 text-emerald-200 stroke-[3]" />
+            ) : (
+              <Copy className="w-4 h-4 stroke-[2.5]" />
+            )}
+            <span>{copied ? 'Copied Sales Data!' : 'Copy Sales Data'}</span>
           </button>
 
           <button
@@ -471,17 +569,17 @@ export const SalesDashboard = ({
             const pct = metrics.totalRevenue > 0 ? Math.round((amount / metrics.totalRevenue) * 100) : 0;
             
             return (
-              <div key={method} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-800">{method}</span>
-                  <span className="font-mono text-emerald-700 font-extrabold">{pct}%</span>
+              <div key={method} className="p-4 sm:p-5 rounded-2xl bg-white border-2 border-slate-300 shadow-md space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-black text-slate-950 text-base sm:text-lg uppercase font-mono tracking-wide">{method}</span>
+                  <span className="font-mono text-emerald-900 font-black text-xs sm:text-sm px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 shrink-0">{pct}%</span>
                 </div>
-                <div className="text-xl font-black text-slate-900 font-mono">
+                <div className="text-2xl sm:text-3xl font-black text-slate-950 font-mono tracking-tight">
                   ₹{amount.toLocaleString()}
                 </div>
-                <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+                <div className="w-full h-2.5 rounded-full bg-slate-100 border border-slate-200 overflow-hidden">
                   <div 
-                    className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-full transition-all duration-500"
+                    className="h-full bg-gradient-to-r from-emerald-600 via-cyan-600 to-slate-900 rounded-full transition-all duration-500"
                     style={{ width: `${pct}%` }}
                   />
                 </div>
@@ -555,14 +653,16 @@ export const SalesDashboard = ({
                       
                       {/* Date & Slot */}
                       <td className="px-5 py-4 font-mono">
-                        <div className="font-extrabold text-slate-900">{b.date}</div>
-                        <div className="text-[11px] text-cyan-700 font-bold">{b.timeSlot}</div>
+                        <div className="font-extrabold text-slate-900 text-xs">{b.date}</div>
+                        <div className="inline-block px-2 py-0.5 rounded bg-slate-950 text-white font-black text-xs font-mono mt-1 shadow-sm tracking-tight">
+                          {b.timeSlot}
+                        </div>
                       </td>
 
                       {/* Customer */}
                       <td className="px-5 py-4">
-                        <div className="font-extrabold text-slate-900">{b.customerName}</div>
-                        <div className="text-[11px] text-slate-500 font-mono font-medium">{b.phone}</div>
+                        <div className="font-black text-slate-950 text-base sm:text-lg tracking-tight">{b.customerName}</div>
+                        <div className="text-xs sm:text-sm text-slate-700 font-mono font-extrabold mt-0.5">{b.phone}</div>
                       </td>
 
                       {/* Venue & Game Name */}
@@ -591,20 +691,22 @@ export const SalesDashboard = ({
                       {/* Offer & Reference */}
                       <td className="px-5 py-4 font-mono">
                         {b.offerId && b.offerId !== 'none' ? (
-                          <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
-                              <Tag className="w-2.5 h-2.5" />
+                          <div className="space-y-1.5">
+                            <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-amber-900 bg-amber-100 px-3 py-1 rounded-xl border border-amber-300 shadow-sm">
+                              <Tag className="w-3.5 h-3.5 text-amber-700" />
                               {b.offerName}
                             </span>
                             {b.referencePerson && (
-                              <div className="text-[10px] font-bold text-emerald-700 flex items-center gap-1">
-                                <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                              <div className="text-xs sm:text-sm font-black text-emerald-800 flex items-center gap-1.5 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                                 Ref: {b.referencePerson}
                               </div>
                             )}
                           </div>
                         ) : (
-                          <span className="text-slate-500 text-[11px] font-medium">Standard Rate</span>
+                          <span className="text-slate-700 text-xs sm:text-sm font-extrabold bg-slate-100 px-2.5 py-1 rounded-xl border border-slate-200 inline-block">
+                            Standard Rate
+                          </span>
                         )}
                       </td>
 
@@ -613,31 +715,38 @@ export const SalesDashboard = ({
                         {isPending ? (
                           <button
                             onClick={() => onEditBooking(b)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black bg-amber-200 text-amber-900 border border-amber-400 hover:bg-amber-300 transition-all cursor-pointer shadow-sm"
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-amber-200 text-amber-950 border border-amber-400 hover:bg-amber-300 transition-all cursor-pointer shadow-sm"
                             title="Click to enter payment and confirm game"
                           >
-                            <Clock3 className="w-3 h-3 text-amber-700" />
+                            <Clock3 className="w-3.5 h-3.5 text-amber-800" />
                             PAYMENT PENDING
                           </button>
                         ) : (
-                          <span className="font-black text-emerald-700 text-sm">
-                            ₹{(Number(b.totalAmount) || 0).toLocaleString()}
-                          </span>
+                          <div>
+                            <div className="font-black text-slate-950 text-base sm:text-lg tracking-tight">
+                              ₹{(Number(b.totalAmount) || 0).toLocaleString()}
+                            </div>
+                            <span className="inline-block text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 mt-0.5">
+                              ✓ Paid & Confirmed
+                            </span>
+                          </div>
                         )}
                       </td>
 
                       {/* Split Breakdown */}
                       <td className="px-5 py-4">
-                        <div className="flex flex-wrap gap-1.5 max-w-xs font-mono">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1.5 max-w-md font-mono">
                           {Object.entries(b.payments || {}).map(([method, amt]) => {
                             if (!amt || Number(amt) <= 0) return null;
+                            const label = method === 'UPI-New Pay' || method === 'UPI/New Pay' ? 'UPI' : method;
                             return (
-                              <span 
+                              <div 
                                 key={method} 
-                                className="px-2 py-0.5 rounded text-[10px] bg-slate-100 border border-slate-200 text-slate-800 font-semibold"
+                                className="inline-flex items-center gap-1.5 text-base sm:text-lg font-black"
                               >
-                                {method.split(' ')[0]}: <strong className="text-emerald-700 font-bold">₹{amt}</strong>
-                              </span>
+                                <span className="text-slate-950 font-black uppercase tracking-tight">{label}:</span>
+                                <span className="text-emerald-700 font-black font-mono">₹{Number(amt).toLocaleString()}</span>
+                              </div>
                             );
                           })}
                         </div>
