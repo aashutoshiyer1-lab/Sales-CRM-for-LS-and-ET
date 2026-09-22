@@ -89,15 +89,24 @@ export function App() {
     setIsBookingModalOpen(true);
   };
 
-  // Save/Update writes to Firebase → onValue listener auto-updates UI
+  // Save/Update with Optimistic UI Update (0ms instant local rendering) + background cloud sync
   const handleSaveOrUpdateBooking = async (bookingPayload, bookingId) => {
     try {
       if (bookingId) {
+        // Optimistic update for instant local reflection
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, ...bookingPayload, updatedAt: new Date().toISOString() } : b));
         await updateBooking(bookingId, bookingPayload);
       } else {
-        await saveBooking(bookingPayload);
+        // Create optimistic entry with unique ID for instant local display
+        const tempId = `booking-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+        const newBooking = {
+          id: tempId,
+          ...bookingPayload,
+          createdAt: new Date().toISOString()
+        };
+        setBookings(prev => [newBooking, ...prev]);
+        await saveBooking(newBooking);
       }
-      // No need to manually setBookings — the onValue listener does it automatically!
     } catch (e) {
       console.error('Save/Update failed:', e);
       alert('Failed to save booking. Please check your internet connection and try again.');
@@ -106,8 +115,9 @@ export function App() {
 
   const handleDeleteBooking = async (bookingId) => {
     try {
+      // Optimistic local removal
+      setBookings(prev => prev.filter(b => b.id !== bookingId));
       await deleteBooking(bookingId);
-      // No need to manually setBookings — the onValue listener does it automatically!
     } catch (e) {
       console.error('Delete failed:', e);
       alert('Failed to delete booking. Please check your internet connection and try again.');

@@ -120,11 +120,11 @@ export const subscribeBookings = (callback) => {
 
 // ─── Save Booking ────────────────────────────────────────────────
 export const saveBooking = async (bookingData) => {
-  const bookingId = `booking-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+  const bookingId = bookingData.id || `booking-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
   const payload = {
     id: bookingId,
     ...bookingData,
-    createdAt: new Date().toISOString(),
+    createdAt: bookingData.createdAt || new Date().toISOString(),
   };
 
   // Try SDK first, fall back to REST
