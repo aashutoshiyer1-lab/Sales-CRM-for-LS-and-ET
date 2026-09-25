@@ -143,12 +143,17 @@ export const SalesDashboard = ({
       Card: 0,
       'UPI-New Pay': 0,
       'Prepaid by District': 0,
+      'Razorpay (Website Bookings)': 0,
+      'Activity Kids': 0,
     };
 
     confirmedBookings.forEach((b) => {
       if (b.payments) {
         Object.entries(b.payments).forEach(([method, amt]) => {
-          const key = method === 'UPI/New Pay' ? 'UPI-New Pay' : method;
+          const key = (method === 'UPI/New Pay') ? 'UPI-New Pay' 
+            : (method === 'Razorpay( website bookings)' || method === 'Razorpay') ? 'Razorpay (Website Bookings)'
+            : (method === 'Activity kids') ? 'Activity Kids'
+            : method;
           if (paymentBreakdown[key] !== undefined) {
             paymentBreakdown[key] += Number(amt) || 0;
           }
@@ -200,6 +205,8 @@ export const SalesDashboard = ({
       'Card (INR)',
       'UPI-New Pay (INR)',
       'Prepaid by District (INR)',
+      'Razorpay (Website Bookings) (INR)',
+      'Activity Kids (INR)',
       'Status'
     ];
 
@@ -225,6 +232,8 @@ export const SalesDashboard = ({
         b.payments?.Card || 0,
         (b.payments?.['UPI-New Pay'] || b.payments?.['UPI/New Pay'] || 0),
         b.payments?.['Prepaid by District'] || 0,
+        (b.payments?.['Razorpay (Website Bookings)'] || b.payments?.['Razorpay( website bookings)'] || 0),
+        (b.payments?.['Activity Kids'] || b.payments?.['Activity kids'] || 0),
         `"${b.status || 'Confirmed'}"`
       ];
       csvRows.push(row.join(','));
@@ -563,7 +572,7 @@ export const SalesDashboard = ({
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 pt-2">
           {PAYMENT_METHODS.map((method) => {
             const amount = metrics.paymentBreakdown[method] || 0;
             const pct = metrics.totalRevenue > 0 ? Math.round((amount / metrics.totalRevenue) * 100) : 0;
@@ -738,7 +747,10 @@ export const SalesDashboard = ({
                         <div className="flex flex-wrap gap-x-4 gap-y-1.5 max-w-md font-mono">
                           {Object.entries(b.payments || {}).map(([method, amt]) => {
                             if (!amt || Number(amt) <= 0) return null;
-                            const label = method === 'UPI-New Pay' || method === 'UPI/New Pay' ? 'UPI' : method;
+                            const label = (method === 'UPI-New Pay' || method === 'UPI/New Pay') ? 'UPI' 
+                              : (method === 'Razorpay (Website Bookings)' || method === 'Razorpay( website bookings)') ? 'Razorpay' 
+                              : (method === 'Activity Kids' || method === 'Activity kids') ? 'Activity Kids' 
+                              : method;
                             return (
                               <div 
                                 key={method} 

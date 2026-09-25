@@ -49,6 +49,8 @@ export const BookingModal = ({
     Card: '',
     'UPI-New Pay': '',
     'Prepaid by District': '',
+    'Razorpay (Website Bookings)': '',
+    'Activity Kids': '',
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -98,6 +100,8 @@ export const BookingModal = ({
         Card: prevPay.Card ? String(prevPay.Card) : '',
         'UPI-New Pay': prevPay['UPI-New Pay'] ? String(prevPay['UPI-New Pay']) : '',
         'Prepaid by District': prevPay['Prepaid by District'] ? String(prevPay['Prepaid by District']) : '',
+        'Razorpay (Website Bookings)': (prevPay['Razorpay (Website Bookings)'] || prevPay['Razorpay( website bookings)']) ? String(prevPay['Razorpay (Website Bookings)'] || prevPay['Razorpay( website bookings)']) : '',
+        'Activity Kids': (prevPay['Activity Kids'] || prevPay['Activity kids']) ? String(prevPay['Activity Kids'] || prevPay['Activity kids']) : '',
       });
     } else {
       setCustomerName('');
@@ -115,6 +119,8 @@ export const BookingModal = ({
         Card: '',
         'UPI-New Pay': '',
         'Prepaid by District': '',
+        'Razorpay (Website Bookings)': '',
+        'Activity Kids': '',
       });
     }
   }, [isOpen, editingBooking, initialSlot]);
@@ -188,6 +194,8 @@ export const BookingModal = ({
       Card: parseInt(payments.Card, 10) || 0,
       'UPI-New Pay': parseInt(payments['UPI-New Pay'], 10) || 0,
       'Prepaid by District': parseInt(payments['Prepaid by District'], 10) || 0,
+      'Razorpay (Website Bookings)': parseInt(payments['Razorpay (Website Bookings)'], 10) || 0,
+      'Activity Kids': parseInt(payments['Activity Kids'], 10) || 0,
     };
 
     const currentSplitTotal = Object.values(numericPayments).reduce((a, b) => a + b, 0);
@@ -525,7 +533,7 @@ export const BookingModal = ({
             </div>
 
             {/* Payment Fields */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {PAYMENT_METHODS.map((method) => (
                 <div key={method} className="bg-white p-2 rounded-xl border border-slate-300 shadow-sm">
                   <label className="block text-[10px] font-bold text-slate-700 truncate mb-1">

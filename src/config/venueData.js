@@ -8,6 +8,8 @@ export const PAYMENT_METHODS = [
   'Card',
   'UPI-New Pay',
   'Prepaid by District',
+  'Razorpay (Website Bookings)',
+  'Activity Kids',
 ];
 
 export const OFFERS = [
