@@ -25,7 +25,8 @@ import {
   Lock,
   Receipt,
   Copy,
-  Check
+  Check,
+  Camera
 } from 'lucide-react';
 
 export const SalesDashboard = ({ 
@@ -650,6 +651,15 @@ export const SalesDashboard = ({
                   const isEscape = b.venue === VENUES.ESCAPE_TIME;
                   const isPending = b.status === 'Pending';
 
+                  const hasSpecialOnlineOrPrepaidPayment = b.payments && (
+                    (Number(b.payments['Prepaid by District']) > 0) ||
+                    (Number(b.payments['Razorpay (Website Bookings)']) > 0) ||
+                    (Number(b.payments['Razorpay( website bookings)']) > 0) ||
+                    (Number(b.payments['Razorpay']) > 0) ||
+                    (Number(b.payments['Activity Kids']) > 0) ||
+                    (Number(b.payments['Activity kids']) > 0)
+                  );
+
                   return (
                     <tr 
                       key={b.id} 
@@ -699,24 +709,33 @@ export const SalesDashboard = ({
 
                       {/* Offer & Reference */}
                       <td className="px-5 py-4 font-mono">
-                        {b.offerId && b.offerId !== 'none' ? (
-                          <div className="space-y-1.5">
-                            <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-amber-900 bg-amber-100 px-3 py-1 rounded-xl border border-amber-300 shadow-sm">
-                              <Tag className="w-3.5 h-3.5 text-amber-700" />
-                              {b.offerName}
+                        <div className="space-y-1.5">
+                          {b.offerId && b.offerId !== 'none' ? (
+                            <>
+                              <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-amber-900 bg-amber-100 px-3 py-1 rounded-xl border border-amber-300 shadow-sm">
+                                <Tag className="w-3.5 h-3.5 text-amber-700" />
+                                {b.offerName}
+                              </span>
+                              {b.referencePerson && (
+                                <div className="text-xs sm:text-sm font-black text-emerald-800 flex items-center gap-1.5 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
+                                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                  Ref: {b.referencePerson}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-slate-700 text-xs sm:text-sm font-extrabold bg-slate-100 px-2.5 py-1 rounded-xl border border-slate-200 inline-block">
+                              Standard Rate
                             </span>
-                            {b.referencePerson && (
-                              <div className="text-xs sm:text-sm font-black text-emerald-800 flex items-center gap-1.5 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
-                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                                Ref: {b.referencePerson}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-slate-700 text-xs sm:text-sm font-extrabold bg-slate-100 px-2.5 py-1 rounded-xl border border-slate-200 inline-block">
-                            Standard Rate
-                          </span>
-                        )}
+                          )}
+
+                          {hasSpecialOnlineOrPrepaidPayment && (
+                            <div className="inline-flex items-center gap-1.5 text-xs font-black text-purple-950 bg-purple-100 px-3 py-1.5 rounded-xl border border-purple-300 shadow-sm">
+                              <Camera className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                              <span>Attach booking / payment screenshots in closing</span>
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       {/* Total Paid / Status */}

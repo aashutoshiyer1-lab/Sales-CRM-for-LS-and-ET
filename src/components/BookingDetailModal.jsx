@@ -10,7 +10,8 @@ import {
   Lock,
   Gamepad2,
   Tag,
-  ShieldCheck
+  ShieldCheck,
+  Camera
 } from 'lucide-react';
 
 export const BookingDetailModal = ({ 
@@ -151,6 +152,20 @@ export const BookingDetailModal = ({
                 </div>
               ))}
             </div>
+
+            {booking.payments && (
+              (Number(booking.payments['Prepaid by District']) > 0) ||
+              (Number(booking.payments['Razorpay (Website Bookings)']) > 0) ||
+              (Number(booking.payments['Razorpay( website bookings)']) > 0) ||
+              (Number(booking.payments['Razorpay']) > 0) ||
+              (Number(booking.payments['Activity Kids']) > 0) ||
+              (Number(booking.payments['Activity kids']) > 0)
+            ) && (
+              <div className="pt-1 flex items-center gap-1.5 text-xs font-black text-purple-950 bg-purple-100 p-2.5 rounded-xl border border-purple-300">
+                <Camera className="w-4 h-4 text-purple-700 shrink-0" />
+                <span>Attach booking / payment screenshots in closing</span>
+              </div>
+            )}
           </div>
 
         </div>
