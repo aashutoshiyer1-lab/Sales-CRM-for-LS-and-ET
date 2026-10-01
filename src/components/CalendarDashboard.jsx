@@ -30,6 +30,13 @@ export const CalendarDashboard = ({
 }) => {
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [gameFilter, setGameFilter] = useState('ALL');
+  const [, setRateOverrideTick] = useState(0);
+
+  useEffect(() => {
+    const handleOverrideUpdate = () => setRateOverrideTick(t => t + 1);
+    window.addEventListener('crm_price_override_updated', handleOverrideUpdate);
+    return () => window.removeEventListener('crm_price_override_updated', handleOverrideUpdate);
+  }, []);
 
   const currentVenueDetails = VENUE_DETAILS[activeVenue];
   const isEscapeTime = activeVenue === VENUES.ESCAPE_TIME;

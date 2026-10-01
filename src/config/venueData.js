@@ -70,11 +70,53 @@ export const VENUE_DETAILS = {
   }
 };
 
+export const getPriceOverrides = () => {
+  try {
+    const raw = localStorage.getItem('crm_price_overrides');
+    if (!raw || raw === 'undefined' || raw === 'null') return {};
+    const parsed = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+export const savePriceOverride = (dateString, mode) => {
+  if (!dateString) return;
+  try {
+    const formattedDate = String(dateString).split('T')[0];
+    const current = getPriceOverrides();
+    current[formattedDate] = mode; // 'weekday' or 'weekend'
+    localStorage.setItem('crm_price_overrides', JSON.stringify(current));
+    window.dispatchEvent(new CustomEvent('crm_price_override_updated', { detail: { date: formattedDate, mode } }));
+  } catch (e) {
+    console.error('Failed to save price override:', e);
+  }
+};
+
 export const isWeekend = (dateString) => {
   if (!dateString) return false;
-  const d = new Date(dateString);
-  const day = d.getDay();
-  return day === 0 || day === 6;
+  try {
+    const formattedDate = String(dateString).split('T')[0];
+    const overrides = getPriceOverrides() || {};
+    
+    if (overrides && overrides[formattedDate]) {
+      return overrides[formattedDate] === 'weekend';
+    }
+
+    const parts = formattedDate.split('-');
+    if (parts.length < 3) return false;
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    
+    if (isNaN(year) || isNaN(month) || isNaN(day)) return false;
+    const d = new Date(year, month, day);
+    const dayOfWeek = d.getDay();
+    return dayOfWeek === 0 || dayOfWeek === 6;
+  } catch (e) {
+    return false;
+  }
 };
 
 export const getOperatingHours = (dateString) => {
@@ -85,7 +127,8 @@ export const getOperatingHours = (dateString) => {
       end: '23:00',
       startMinutes: 10 * 60 + 30,
       endMinutes: 23 * 60,
-      label: '10:30 AM – 11:00 PM (Weekend)'
+      label: '10:30 AM – 11:00 PM (Weekend)',
+      isWeekend: true
     };
   }
   return {
@@ -93,6 +136,7 @@ export const getOperatingHours = (dateString) => {
     end: '22:00',
     startMinutes: 11 * 60,
     endMinutes: 22 * 60,
-    label: '11:00 AM – 10:00 PM (Weekday)'
+    label: '11:00 AM – 10:00 PM (Weekday)',
+    isWeekend: false
   };
 };

@@ -125,6 +125,14 @@ export const BookingModal = ({
     }
   }, [isOpen, editingBooking, initialSlot]);
 
+  const [, setRateOverrideTick] = useState(0);
+
+  useEffect(() => {
+    const handleOverrideUpdate = () => setRateOverrideTick(t => t + 1);
+    window.addEventListener('crm_price_override_updated', handleOverrideUpdate);
+    return () => window.removeEventListener('crm_price_override_updated', handleOverrideUpdate);
+  }, []);
+
   // Auto-adapt timeSlot whenever date changes to match valid operating hours for that day (weekday vs weekend)
   useEffect(() => {
     if (!isOpen || dynamicTimeSlotOptions.length === 0) return;

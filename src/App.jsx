@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { VENUES } from './config/venueData';
 import { 
   subscribeBookings, 
+  subscribePriceOverrides,
   saveBooking, 
   updateBooking, 
   deleteBooking, 
@@ -49,12 +50,20 @@ export function App() {
     }
   }, [isLoggedIn, currentView, activeVenue]);
 
-  // Subscribe to real-time Firebase sync — this is the ONLY data source
+  const [, setRateOverrideTick] = useState(0);
+
+  // Subscribe to real-time Firebase sync — bookings & price overrides
   useEffect(() => {
-    const unsubscribe = subscribeBookings((data) => {
+    const unsubscribeBookings = subscribeBookings((data) => {
       setBookings(data);
     });
-    return () => unsubscribe();
+    subscribePriceOverrides();
+    const handleOverrideUpdate = () => setRateOverrideTick(t => t + 1);
+    window.addEventListener('crm_price_override_updated', handleOverrideUpdate);
+    return () => {
+      unsubscribeBookings();
+      window.removeEventListener('crm_price_override_updated', handleOverrideUpdate);
+    };
   }, []);
 
   const handleLoginSuccess = () => {

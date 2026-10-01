@@ -198,4 +198,41 @@ export const resetAllBookings = async () => {
   }
 };
 
+// ─── Price Overrides Realtime Sync ──────────────────────────────
+export const subscribePriceOverrides = (callback) => {
+  try {
+    const overridesRef = ref(rtdb, 'priceOverrides');
+    return onValue(overridesRef, (snapshot) => {
+      try {
+        const data = snapshot.val() || {};
+        localStorage.setItem('crm_price_overrides', JSON.stringify(data));
+        if (callback) callback(data);
+        window.dispatchEvent(new CustomEvent('crm_price_override_updated', { detail: data }));
+      } catch (err) {
+        console.warn('[Firebase] Price override snapshot processing error:', err);
+      }
+    });
+  } catch (e) {
+    console.warn('[Firebase] Price override subscribe failed:', e);
+    return () => {};
+  }
+};
+
+export const savePriceOverrideFirebase = async (dateString, mode) => {
+  if (!dateString) return;
+  const formattedDate = String(dateString).split('T')[0];
+  try {
+    await set(ref(rtdb, `priceOverrides/${formattedDate}`), mode);
+    console.log(`[Firebase SDK] Saved price override ${formattedDate}: ${mode}`);
+  } catch (sdkErr) {
+    console.warn(`[Firebase SDK] Save price override failed, using REST:`, sdkErr.message);
+    try {
+      await restPut(`priceOverrides/${formattedDate}`, mode);
+    } catch (restErr) {
+      console.error(`[Firebase REST] Save price override failed:`, restErr);
+    }
+  }
+  window.dispatchEvent(new CustomEvent('crm_price_override_updated', { detail: { date: formattedDate, mode } }));
+};
+
 export { rtdb };
