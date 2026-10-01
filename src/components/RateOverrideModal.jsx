@@ -20,16 +20,18 @@ export const RateOverrideModal = ({ isOpen, onClose, onRateUpdated }) => {
       setSaveSuccess(false);
       return;
     }
+    if (!targetDate) return;
     try {
       const overrides = getPriceOverrides() || {};
       const formattedDate = normalizeDateString(targetDate);
+      if (!formattedDate) return;
+
       const currentOverride = overrides[formattedDate];
-      
       if (currentOverride) {
         setSelectedMode(currentOverride);
       } else {
-        const naturalIsWeekend = isWeekend(targetDate);
-        setSelectedMode(naturalIsWeekend ? 'weekend' : 'weekday');
+        const naturalType = getNaturalDayType(formattedDate);
+        setSelectedMode(naturalType === 'Weekend' ? 'weekend' : 'weekday');
       }
     } catch (e) {
       console.error(e);
@@ -50,6 +52,7 @@ export const RateOverrideModal = ({ isOpen, onClose, onRateUpdated }) => {
 
   const handleApplyOverride = async (e) => {
     e.preventDefault();
+    if (!targetDate) return;
     const formattedDate = normalizeDateString(targetDate);
     savePriceOverride(formattedDate, selectedMode);
     await savePriceOverrideFirebase(formattedDate, selectedMode);
@@ -62,7 +65,7 @@ export const RateOverrideModal = ({ isOpen, onClose, onRateUpdated }) => {
     }, 400);
   };
 
-  const naturalIsWeekend = isWeekend(targetDate);
+  const naturalIsWeekend = getNaturalDayType(targetDate) === 'Weekend';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">

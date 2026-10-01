@@ -78,7 +78,7 @@ export const getLocalDateString = (d = new Date()) => {
 };
 
 export const normalizeDateString = (dateInput) => {
-  if (!dateInput) return getLocalDateString();
+  if (!dateInput) return '';
   if (typeof dateInput === 'string') {
     const cleanStr = dateInput.split('T')[0].trim();
     const parts = cleanStr.split('-');
