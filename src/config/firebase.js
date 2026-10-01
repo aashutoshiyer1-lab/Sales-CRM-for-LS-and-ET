@@ -205,9 +205,18 @@ export const subscribePriceOverrides = (callback) => {
     return onValue(overridesRef, (snapshot) => {
       try {
         const data = snapshot.val() || {};
-        localStorage.setItem('crm_price_overrides', JSON.stringify(data));
+        const oldRaw = localStorage.getItem('crm_price_overrides') || '{}';
+        const newRaw = JSON.stringify(data);
+        
+        localStorage.setItem('crm_price_overrides', newRaw);
         if (callback) callback(data);
         window.dispatchEvent(new CustomEvent('crm_price_override_updated', { detail: data }));
+
+        // Auto-refresh page across all connected clients if price overrides change remotely
+        if (oldRaw !== '{}' && oldRaw !== newRaw) {
+          console.log('[Firebase] Price override changed remotely, reloading page...');
+          window.location.reload();
+        }
       } catch (err) {
         console.warn('[Firebase] Price override snapshot processing error:', err);
       }

@@ -58,9 +58,8 @@ export const RateOverrideModal = ({ isOpen, onClose, onRateUpdated }) => {
     if (onRateUpdated) onRateUpdated();
     
     setTimeout(() => {
-      setSaveSuccess(false);
-      onClose();
-    }, 1200);
+      window.location.reload();
+    }, 400);
   };
 
   const naturalIsWeekend = isWeekend(targetDate);
