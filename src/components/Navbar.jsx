@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { VENUES, isWeekend, getPriceOverrides, getLocalDateString, getNaturalDayType, formatPrettyDate } from '../config/venueData';
+import React from 'react';
+import { VENUES } from '../config/venueData';
 import { 
   Calendar, 
   BarChart3, 
@@ -9,12 +9,8 @@ import {
   ShieldCheck, 
   Layers,
   Gamepad2,
-  Lock,
-  Zap,
-  Flame,
-  ArrowRight
+  Lock
 } from 'lucide-react';
-import { RateOverrideModal } from './RateOverrideModal';
 
 export const Navbar = ({ 
   currentView, 
@@ -25,15 +21,6 @@ export const Navbar = ({
   onOpenBookingModal 
 }) => {
   const isEscapeTime = activeVenue === VENUES.ESCAPE_TIME;
-  const [isRateModalOpen, setIsRateModalOpen] = useState(false);
-  const [rateRefreshKey, setRateRefreshKey] = useState(0);
-
-  const todayStr = getLocalDateString();
-  const naturalDayType = getNaturalDayType(todayStr);
-  const isCurrentlyWeekend = isWeekend(todayStr);
-  const priceOverrides = getPriceOverrides();
-  const isOverridden = Boolean(priceOverrides[todayStr]);
-  const prettyToday = formatPrettyDate(todayStr);
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
@@ -154,27 +141,6 @@ export const Navbar = ({
               <span>New Entry</span>
             </button>
 
-            {/* Pricing Rate Mode Switcher (Admin Override) */}
-            <button
-              onClick={() => setIsRateModalOpen(true)}
-              title={`Today: ${prettyToday} (${naturalDayType}) | Active Rate: ${isCurrentlyWeekend ? 'Weekend Rate' : 'Weekday Rate'}. Password: admin1`}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all border shadow-sm ${
-                isCurrentlyWeekend
-                  ? 'bg-amber-500/10 text-amber-900 border-amber-300 hover:bg-amber-500/20'
-                  : 'bg-cyan-500/10 text-cyan-900 border-cyan-300 hover:bg-cyan-500/20'
-              }`}
-            >
-              {isCurrentlyWeekend ? <Flame className="w-4 h-4 text-amber-600 fill-amber-500" /> : <Zap className="w-4 h-4 text-cyan-600 fill-cyan-500" />}
-              <span className="hidden md:inline font-mono">
-                {isCurrentlyWeekend ? 'Weekend Rate' : 'Weekday Rate'}
-              </span>
-              {isOverridden && (
-                <span className="bg-amber-600 text-white text-[9px] px-1 rounded-full font-mono">
-                  Changed
-                </span>
-              )}
-            </button>
-
             {/* User & Logout */}
             <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
               <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-600 font-mono font-semibold">
@@ -193,13 +159,6 @@ export const Navbar = ({
           </div>
         </div>
       </div>
-
-      {/* Admin Rate Override Modal */}
-      <RateOverrideModal
-        isOpen={isRateModalOpen}
-        onClose={() => setIsRateModalOpen(false)}
-        onRateUpdated={() => setRateRefreshKey(k => k + 1)}
-      />
     </header>
   );
 };
