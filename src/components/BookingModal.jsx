@@ -162,8 +162,15 @@ export const BookingModal = ({
       Card: '',
       'UPI-New Pay': '',
       'Prepaid by District': '',
+      'Razorpay (Website Bookings)': '',
+      'Activity Kids': '',
       [method]: String(finalTotalAmount)
     });
+    if (method === 'Prepaid by District' && (offerId === 'none' || !offerId)) {
+      setOfferId('district_app');
+    } else if (method === 'Razorpay (Website Bookings)' && (offerId === 'none' || !offerId)) {
+      setOfferId('website_booking');
+    }
     // Auto untick pending when full payment is filled
     if (finalTotalAmount > 0) {
       setIsPendingBooking(false);
@@ -176,6 +183,12 @@ export const BookingModal = ({
       [method]: value
     };
     setPayments(updatedPayments);
+
+    if (method === 'Prepaid by District' && (parseInt(value, 10) || 0) > 0 && (offerId === 'none' || !offerId)) {
+      setOfferId('district_app');
+    } else if (method === 'Razorpay (Website Bookings)' && (parseInt(value, 10) || 0) > 0 && (offerId === 'none' || !offerId)) {
+      setOfferId('website_booking');
+    }
 
     // Auto untick pending checkbox if user enters payment matching or exceeding target
     const newSplitTotal = Object.values(updatedPayments).reduce((sum, val) => sum + (parseInt(val, 10) || 0), 0);
@@ -429,24 +442,24 @@ export const BookingModal = ({
             </select>
           </div>
 
-          {/* Reference Approval Selector when discount > 0 */}
-          {pricingInfo.discountPercentage > 0 && (
+          {/* Reference Approval Selector when discount or special offer selected */}
+          {offerId !== 'none' && offerId !== 'district_app' && offerId !== 'website_booking' && (
             <div className="p-3.5 rounded-2xl bg-amber-100/80 border border-amber-300 space-y-2 text-xs">
               <div className="flex items-center justify-between font-bold text-amber-900">
                 <span className="flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
-                  Whose Reference Approved This Discount?
+                  Whose Reference Approved This Discount? (Mandatory)
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-2 pt-1">
+              <div className="grid grid-cols-2 gap-2 pt-1">
                 {REFERENCES.map((ref) => (
                   <button
                     key={ref}
                     type="button"
                     onClick={() => setReferencePerson(ref)}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-bold font-mono transition-all ${
+                    className={`py-2 px-3 rounded-xl text-xs font-bold font-mono transition-all ${
                       referencePerson === ref
-                        ? 'bg-amber-600 text-white shadow-md font-extrabold'
+                        ? 'bg-amber-600 text-white shadow-md font-extrabold scale-95'
                         : 'bg-white text-amber-900 hover:bg-amber-200 border border-amber-300'
                     }`}
                   >

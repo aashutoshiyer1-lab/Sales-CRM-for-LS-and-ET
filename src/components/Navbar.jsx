@@ -3,6 +3,7 @@ import { VENUES } from '../config/venueData';
 import { 
   Calendar, 
   BarChart3, 
+  FileText,
   PlusCircle, 
   LogOut, 
   ShieldCheck, 
@@ -102,6 +103,18 @@ export const Navbar = ({
               >
                 <BarChart3 className="w-4 h-4 text-emerald-600" />
                 <span>Sales</span>
+              </button>
+
+              <button
+                onClick={() => setCurrentView('closing')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  currentView === 'closing'
+                    ? 'bg-white text-indigo-700 border border-slate-200 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileText className="w-4 h-4 text-indigo-600" />
+                <span>Closing Report</span>
               </button>
             </div>
 

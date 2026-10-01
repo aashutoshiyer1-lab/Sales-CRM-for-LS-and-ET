@@ -60,9 +60,9 @@ export const calculatePricing = ({ venue, gameName, paxCount, date, offerId = 'n
   const selectedOffer = OFFERS.find(o => o.id === offerId) || OFFERS[0];
   const discountPercentage = selectedOffer.percentage || 0;
   
-  // 100% OFF for Complimentary Game (Kids Under 6 Years)
-  const discountAmount = Math.round((baseTotal * discountPercentage) / 100);
-  const finalTotalAmount = Math.max(0, baseTotal - discountAmount);
+  // Round total amount to nearest whole integer (.5 rounds up to next integer e.g., 3496.5 -> 3497)
+  const finalTotalAmount = Math.max(0, Math.round(baseTotal * (1 - discountPercentage / 100)));
+  const discountAmount = baseTotal - finalTotalAmount;
 
   return {
     ratePerPax,

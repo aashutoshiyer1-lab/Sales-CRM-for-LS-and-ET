@@ -13,6 +13,7 @@ import { LoginView } from './components/LoginView';
 import { VenueSelectionView } from './components/VenueSelectionView';
 import { CalendarDashboard } from './components/CalendarDashboard';
 import { SalesDashboard } from './components/SalesDashboard';
+import { ClosingReportDashboard } from './components/ClosingReportDashboard';
 import { BookingModal } from './components/BookingModal';
 import { BookingDetailModal } from './components/BookingDetailModal';
 
@@ -181,6 +182,13 @@ export function App() {
             onEditBooking={(b) => handleOpenEditBookingModal(b)}
             onDeleteBooking={handleDeleteBooking}
             onResetAllBookings={handleResetAllBookings}
+          />
+        )}
+
+        {currentView === 'closing' && (
+          <ClosingReportDashboard
+            bookings={bookings}
+            onEditBooking={(b) => handleOpenEditBookingModal(b)}
           />
         )}
       </main>
