@@ -158,26 +158,18 @@ export const Navbar = ({
             <button
               onClick={() => setIsRateModalOpen(true)}
               title={`Today: ${prettyToday} (${naturalDayType}) | Active Rate: ${isCurrentlyWeekend ? 'Weekend Rate' : 'Weekday Rate'}. Password: admin1`}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-black transition-all border shadow-sm ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all border shadow-sm ${
                 isCurrentlyWeekend
-                  ? 'bg-amber-500/10 text-amber-950 border-amber-300 hover:bg-amber-500/20'
-                  : 'bg-cyan-500/10 text-cyan-950 border-cyan-300 hover:bg-cyan-500/20'
+                  ? 'bg-amber-500/10 text-amber-900 border-amber-300 hover:bg-amber-500/20'
+                  : 'bg-cyan-500/10 text-cyan-900 border-cyan-300 hover:bg-cyan-500/20'
               }`}
             >
-              {isCurrentlyWeekend ? <Flame className="w-4 h-4 text-amber-600 fill-amber-500 shrink-0" /> : <Zap className="w-4 h-4 text-cyan-600 fill-cyan-500 shrink-0" />}
-              
-              <div className="flex items-center gap-1.5 text-[11px]">
-                <span className="hidden xl:inline text-slate-500 font-mono font-medium">
-                  {prettyToday.split(',')[0]} ({naturalDayType})
-                </span>
-                <ArrowRight className="hidden xl:inline w-3 h-3 text-slate-400" />
-                <span className="font-extrabold tracking-tight font-mono">
-                  {isCurrentlyWeekend ? 'Weekend Rate' : 'Weekday Rate'}
-                </span>
-              </div>
-
+              {isCurrentlyWeekend ? <Flame className="w-4 h-4 text-amber-600 fill-amber-500" /> : <Zap className="w-4 h-4 text-cyan-600 fill-cyan-500" />}
+              <span className="hidden md:inline font-mono">
+                {isCurrentlyWeekend ? 'Weekend Rate' : 'Weekday Rate'}
+              </span>
               {isOverridden && (
-                <span className="bg-amber-600 text-white text-[9px] px-1.5 py-0.5 rounded-full font-mono uppercase font-bold tracking-wider">
+                <span className="bg-amber-600 text-white text-[9px] px-1 rounded-full font-mono">
                   Changed
                 </span>
               )}
