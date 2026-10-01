@@ -196,10 +196,31 @@ export const RateOverrideModal = ({ isOpen, onClose, onRateUpdated }) => {
               </div>
             </div>
 
+            {/* Clear Date Confirmation Summary Box */}
+            <div className="p-3.5 rounded-xl bg-slate-100 border border-slate-200 space-y-1.5 font-mono text-xs">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                Confirm Rate Change Details:
+              </div>
+              <div className="flex items-center justify-between text-slate-800 font-bold">
+                <span>Selected Date:</span>
+                <span className="text-cyan-700 font-extrabold">{formatPrettyDate(targetDate)}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-600">
+                <span>Calendar Day Type:</span>
+                <span className="font-semibold text-slate-700">{getNaturalDayType(targetDate)}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-900 border-t border-slate-200 pt-1.5 mt-1 font-extrabold">
+                <span>New Active Rate:</span>
+                <span className={selectedMode === 'weekend' ? 'text-amber-600' : 'text-cyan-600'}>
+                  {selectedMode === 'weekend' ? '🔥 Weekend Rate (Peak)' : '⚡ Weekday Rate (Standard)'}
+                </span>
+              </div>
+            </div>
+
             {saveSuccess && (
               <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold animate-fadeIn">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Rate updated & synced real-time for all clients!</span>
+                <span>Rate updated & synced real-time for all clients! Reloading...</span>
               </div>
             )}
 

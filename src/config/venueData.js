@@ -96,6 +96,42 @@ export const normalizeDateString = (dateInput) => {
   return String(dateInput);
 };
 
+export const formatPrettyDate = (dateString) => {
+  if (!dateString) return '';
+  try {
+    const cleanStr = normalizeDateString(dateString);
+    const parts = cleanStr.split('-');
+    if (parts.length < 3) return dateString;
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const d = new Date(year, month, day);
+    
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const monthName = d.toLocaleDateString('en-US', { month: 'short' });
+    return `${dayName}, ${String(day).padStart(2, '0')} ${monthName} ${year}`;
+  } catch (e) {
+    return dateString;
+  }
+};
+
+export const getNaturalDayType = (dateString) => {
+  if (!dateString) return 'Weekday';
+  try {
+    const formattedDate = normalizeDateString(dateString);
+    const parts = formattedDate.split('-');
+    if (parts.length < 3) return 'Weekday';
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const d = new Date(year, month, day);
+    const dayOfWeek = d.getDay();
+    return (dayOfWeek === 0 || dayOfWeek === 6) ? 'Weekend' : 'Weekday';
+  } catch (e) {
+    return 'Weekday';
+  }
+};
+
 export const getPriceOverrides = () => {
   try {
     const raw = localStorage.getItem('crm_price_overrides');

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { VENUES, isWeekend, getPriceOverrides } from '../config/venueData';
+import { VENUES, isWeekend, getPriceOverrides, getLocalDateString, getNaturalDayType, formatPrettyDate } from '../config/venueData';
 import { 
   Calendar, 
   BarChart3, 
@@ -11,7 +11,8 @@ import {
   Gamepad2,
   Lock,
   Zap,
-  Flame
+  Flame,
+  ArrowRight
 } from 'lucide-react';
 import { RateOverrideModal } from './RateOverrideModal';
 
@@ -27,10 +28,12 @@ export const Navbar = ({
   const [isRateModalOpen, setIsRateModalOpen] = useState(false);
   const [rateRefreshKey, setRateRefreshKey] = useState(0);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
+  const naturalDayType = getNaturalDayType(todayStr);
   const isCurrentlyWeekend = isWeekend(todayStr);
   const priceOverrides = getPriceOverrides();
   const isOverridden = Boolean(priceOverrides[todayStr]);
+  const prettyToday = formatPrettyDate(todayStr);
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
@@ -154,20 +157,28 @@ export const Navbar = ({
             {/* Pricing Rate Mode Switcher (Admin Override) */}
             <button
               onClick={() => setIsRateModalOpen(true)}
-              title="Admin Rate Mode Switcher (Password: admin1)"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all border shadow-sm ${
+              title={`Today: ${prettyToday} (${naturalDayType}) | Active Rate: ${isCurrentlyWeekend ? 'Weekend Rate' : 'Weekday Rate'}. Password: admin1`}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-black transition-all border shadow-sm ${
                 isCurrentlyWeekend
-                  ? 'bg-amber-500/10 text-amber-900 border-amber-300 hover:bg-amber-500/20'
-                  : 'bg-cyan-500/10 text-cyan-900 border-cyan-300 hover:bg-cyan-500/20'
+                  ? 'bg-amber-500/10 text-amber-950 border-amber-300 hover:bg-amber-500/20'
+                  : 'bg-cyan-500/10 text-cyan-950 border-cyan-300 hover:bg-cyan-500/20'
               }`}
             >
-              {isCurrentlyWeekend ? <Flame className="w-4 h-4 text-amber-600 fill-amber-500" /> : <Zap className="w-4 h-4 text-cyan-600 fill-cyan-500" />}
-              <span className="hidden md:inline font-mono">
-                {isCurrentlyWeekend ? 'Weekend Rate' : 'Weekday Rate'}
-              </span>
+              {isCurrentlyWeekend ? <Flame className="w-4 h-4 text-amber-600 fill-amber-500 shrink-0" /> : <Zap className="w-4 h-4 text-cyan-600 fill-cyan-500 shrink-0" />}
+              
+              <div className="flex items-center gap-1.5 text-[11px]">
+                <span className="hidden xl:inline text-slate-500 font-mono font-medium">
+                  {prettyToday.split(',')[0]} ({naturalDayType})
+                </span>
+                <ArrowRight className="hidden xl:inline w-3 h-3 text-slate-400" />
+                <span className="font-extrabold tracking-tight font-mono">
+                  {isCurrentlyWeekend ? 'Weekend Rate' : 'Weekday Rate'}
+                </span>
+              </div>
+
               {isOverridden && (
-                <span className="bg-amber-600 text-white text-[9px] px-1 rounded-full font-mono">
-                  Override
+                <span className="bg-amber-600 text-white text-[9px] px-1.5 py-0.5 rounded-full font-mono uppercase font-bold tracking-wider">
+                  Changed
                 </span>
               )}
             </button>
