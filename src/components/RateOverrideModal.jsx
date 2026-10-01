@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getPriceOverrides, savePriceOverride, isWeekend, getLocalDateString, normalizeDateString } from '../config/venueData';
+import { getPriceOverrides, savePriceOverride, isWeekend, getLocalDateString, normalizeDateString, formatPrettyDate, getNaturalDayType } from '../config/venueData';
 import { savePriceOverrideFirebase } from '../config/firebase';
 import { Lock, Zap, Flame, CheckCircle2, AlertCircle, Calendar, ShieldCheck, X } from 'lucide-react';
 
