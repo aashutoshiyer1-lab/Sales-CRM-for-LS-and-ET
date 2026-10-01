@@ -218,9 +218,11 @@ export const subscribePriceOverrides = (callback) => {
   }
 };
 
+import { normalizeDateString } from './venueData';
+
 export const savePriceOverrideFirebase = async (dateString, mode) => {
   if (!dateString) return;
-  const formattedDate = String(dateString).split('T')[0];
+  const formattedDate = normalizeDateString(dateString);
   try {
     await set(ref(rtdb, `priceOverrides/${formattedDate}`), mode);
     console.log(`[Firebase SDK] Saved price override ${formattedDate}: ${mode}`);

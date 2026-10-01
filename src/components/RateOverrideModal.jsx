@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getPriceOverrides, savePriceOverride, isWeekend } from '../config/venueData';
+import { getPriceOverrides, savePriceOverride, isWeekend, getLocalDateString, normalizeDateString } from '../config/venueData';
 import { savePriceOverrideFirebase } from '../config/firebase';
 import { Lock, Zap, Flame, CheckCircle2, AlertCircle, Calendar, ShieldCheck, X } from 'lucide-react';
 
@@ -8,7 +8,7 @@ export const RateOverrideModal = ({ isOpen, onClose, onRateUpdated }) => {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [authError, setAuthError] = useState('');
   
-  const [targetDate, setTargetDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [targetDate, setTargetDate] = useState(() => getLocalDateString());
   const [selectedMode, setSelectedMode] = useState('weekday');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -22,7 +22,7 @@ export const RateOverrideModal = ({ isOpen, onClose, onRateUpdated }) => {
     }
     try {
       const overrides = getPriceOverrides() || {};
-      const formattedDate = String(targetDate).split('T')[0];
+      const formattedDate = normalizeDateString(targetDate);
       const currentOverride = overrides[formattedDate];
       
       if (currentOverride) {
@@ -50,7 +50,7 @@ export const RateOverrideModal = ({ isOpen, onClose, onRateUpdated }) => {
 
   const handleApplyOverride = async (e) => {
     e.preventDefault();
-    const formattedDate = String(targetDate).split('T')[0];
+    const formattedDate = normalizeDateString(targetDate);
     savePriceOverride(formattedDate, selectedMode);
     await savePriceOverrideFirebase(formattedDate, selectedMode);
     

@@ -70,6 +70,32 @@ export const VENUE_DETAILS = {
   }
 };
 
+export const getLocalDateString = (d = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export const normalizeDateString = (dateInput) => {
+  if (!dateInput) return getLocalDateString();
+  if (typeof dateInput === 'string') {
+    const cleanStr = dateInput.split('T')[0].trim();
+    const parts = cleanStr.split('-');
+    if (parts.length === 3) {
+      const y = parts[0];
+      const m = parts[1].padStart(2, '0');
+      const d = parts[2].padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    return cleanStr;
+  }
+  if (dateInput instanceof Date) {
+    return getLocalDateString(dateInput);
+  }
+  return String(dateInput);
+};
+
 export const getPriceOverrides = () => {
   try {
     const raw = localStorage.getItem('crm_price_overrides');
@@ -84,7 +110,7 @@ export const getPriceOverrides = () => {
 export const savePriceOverride = (dateString, mode) => {
   if (!dateString) return;
   try {
-    const formattedDate = String(dateString).split('T')[0];
+    const formattedDate = normalizeDateString(dateString);
     const current = getPriceOverrides();
     current[formattedDate] = mode; // 'weekday' or 'weekend'
     localStorage.setItem('crm_price_overrides', JSON.stringify(current));
@@ -97,7 +123,7 @@ export const savePriceOverride = (dateString, mode) => {
 export const isWeekend = (dateString) => {
   if (!dateString) return false;
   try {
-    const formattedDate = String(dateString).split('T')[0];
+    const formattedDate = normalizeDateString(dateString);
     const overrides = getPriceOverrides() || {};
     
     if (overrides && overrides[formattedDate]) {
