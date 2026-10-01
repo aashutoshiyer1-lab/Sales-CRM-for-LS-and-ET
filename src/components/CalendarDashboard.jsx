@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { VENUES, VENUE_DETAILS, getOperatingHours } from '../config/venueData';
 import { getGameCategoryLabel } from '../utils/pricingEngine';
 import { 
