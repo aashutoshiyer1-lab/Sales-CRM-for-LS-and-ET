@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { VENUES, VENUE_DETAILS, PAYMENT_METHODS, OFFERS, REFERENCES, getOperatingHours } from '../config/venueData';
+import { VENUES, VENUE_DETAILS, PAYMENT_METHODS, OFFERS, REFERENCES, getOperatingHours, isWeekend } from '../config/venueData';
 import { calculatePricing } from '../utils/pricingEngine';
 import { 
   X, 
@@ -19,7 +19,9 @@ import {
   Calendar as CalendarIcon,
   Clock,
   Clock3,
-  Gift
+  Gift,
+  Zap,
+  Flame
 } from 'lucide-react';
 
 export const BookingModal = ({ 
@@ -38,6 +40,7 @@ export const BookingModal = ({
   const [paxCount, setPaxCount] = useState('');
   const [gameName, setGameName] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [rateMode, setRateMode] = useState(() => isWeekend(new Date().toISOString().split('T')[0]) ? 'weekend' : 'weekday');
   const [timeSlot, setTimeSlot] = useState('11:00');
   const [offerId, setOfferId] = useState('none');
   const [referencePerson, setReferencePerson] = useState('Nayeem Sir');
@@ -88,7 +91,9 @@ export const BookingModal = ({
       setEmail(editingBooking.email || '');
       setPaxCount(editingBooking.paxCount ? String(editingBooking.paxCount) : '');
       setGameName(editingBooking.gameName || '');
-      setDate(editingBooking.date || new Date().toISOString().split('T')[0]);
+      const targetDate = editingBooking.date || new Date().toISOString().split('T')[0];
+      setDate(targetDate);
+      setRateMode(editingBooking.rateMode || (isWeekend(targetDate) ? 'weekend' : 'weekday'));
       setTimeSlot(editingBooking.timeSlot || '11:00');
       setOfferId(editingBooking.offerId || 'none');
       setReferencePerson(editingBooking.referencePerson || 'Nayeem Sir');
@@ -109,7 +114,9 @@ export const BookingModal = ({
       setEmail('');
       setPaxCount('');
       setGameName('');
-      setDate(initialSlot.date || new Date().toISOString().split('T')[0]);
+      const targetDate = initialSlot.date || new Date().toISOString().split('T')[0];
+      setDate(targetDate);
+      setRateMode(isWeekend(targetDate) ? 'weekend' : 'weekday');
       setTimeSlot(initialSlot.timeSlot || '11:00');
       setOfferId('none');
       setReferencePerson('Nayeem Sir');
@@ -124,6 +131,13 @@ export const BookingModal = ({
       });
     }
   }, [isOpen, editingBooking, initialSlot]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!editingBooking) {
+      setRateMode(isWeekend(date) ? 'weekend' : 'weekday');
+    }
+  }, [date, isOpen, editingBooking]);
 
   const [, setRateOverrideTick] = useState(0);
 
@@ -149,6 +163,7 @@ export const BookingModal = ({
     paxCount,
     date,
     offerId,
+    rateModeOverride: rateMode,
   });
 
   const isComplimentary = offerId === 'complimentary';
@@ -231,6 +246,7 @@ export const BookingModal = ({
       paxCount: parseInt(paxCount, 10),
       date,
       timeSlot,
+      rateMode,
       offerId: pricingInfo.offerId,
       offerName: pricingInfo.offerName,
       discountPercentage: pricingInfo.discountPercentage,
@@ -418,6 +434,44 @@ export const BookingModal = ({
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* Pricing Rate Tier Switcher (Choose between Weekday and Weekend per entry) */}
+            <div className="p-2.5 rounded-2xl bg-slate-100/90 border border-slate-300 space-y-1.5 sm:col-span-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                  Pricing Rate Tier
+                </label>
+                <span className="text-[10px] font-mono font-semibold text-slate-500">
+                  Default for Date: <strong className="text-slate-800">{isWeekend(date) ? 'Weekend' : 'Weekday'}</strong>
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-200/80 border border-slate-300">
+                <button
+                  type="button"
+                  onClick={() => setRateMode('weekday')}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 ${
+                    rateMode === 'weekday'
+                      ? 'bg-cyan-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/50'
+                  }`}
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Weekday Rate</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRateMode('weekend')}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 ${
+                    rateMode === 'weekend'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/50'
+                  }`}
+                >
+                  <Flame className="w-3.5 h-3.5" />
+                  <span>Weekend Rate</span>
+                </button>
               </div>
             </div>
 
