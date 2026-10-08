@@ -1,4 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import {
   getDatabase,
   ref,
@@ -23,11 +24,29 @@ const firebaseConfig = {
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+const auth = getAuth(app);
 const rtdb = getDatabase(app);
+
+// Automatically sign in anonymously to satisfy security rules (auth != null)
+signInAnonymously(auth).catch((err) => {
+  console.warn('[Firebase Auth] Anonymous sign-in error:', err.message);
+});
+
+// Helper to get active ID token for REST fallback requests
+async function getIdToken() {
+  try {
+    if (auth.currentUser) {
+      return await auth.currentUser.getIdToken();
+    }
+  } catch (e) {}
+  return null;
+}
 
 // ─── REST API helpers (bulletproof fallback) ─────────────────────
 async function restPut(path, data) {
-  const res = await fetch(`${DATABASE_URL}/${path}.json`, {
+  const token = await getIdToken();
+  const url = `${DATABASE_URL}/${path}.json${token ? `?auth=${token}` : ''}`;
+  const res = await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -37,14 +56,18 @@ async function restPut(path, data) {
 }
 
 async function restDelete(path) {
-  const res = await fetch(`${DATABASE_URL}/${path}.json`, {
+  const token = await getIdToken();
+  const url = `${DATABASE_URL}/${path}.json${token ? `?auth=${token}` : ''}`;
+  const res = await fetch(url, {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error(`REST DELETE failed: ${res.status}`);
 }
 
 async function restGet(path) {
-  const res = await fetch(`${DATABASE_URL}/${path}.json`);
+  const token = await getIdToken();
+  const url = `${DATABASE_URL}/${path}.json${token ? `?auth=${token}` : ''}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`REST GET failed: ${res.status}`);
   return res.json();
 }
