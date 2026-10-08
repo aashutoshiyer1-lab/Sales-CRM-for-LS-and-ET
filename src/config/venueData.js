@@ -22,6 +22,7 @@ export const OFFERS = [
   { id: 'cross_promotion_brochure', name: 'Cross Promotion Brochure (30% OFF)', percentage: 30 },
   { id: 'district_app', name: 'District App (Prepaid by District)', percentage: 0 },
   { id: 'website_booking', name: 'Website Booking (Razorpay)', percentage: 0 },
+  { id: 'activity_kids', name: 'Activity Kids', percentage: 0 },
   { id: 'complimentary', name: 'Complimentary Game (Kids Under 5 Years - 100% OFF)', percentage: 100 },
 ];
 

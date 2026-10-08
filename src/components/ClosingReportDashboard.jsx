@@ -244,24 +244,41 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
       spy: []
     };
 
-    // 1. Process Bookings with Discounts or Online Payments (District / Razorpay)
+    // 1. Process Bookings with Discounts or Online Payments (District / Razorpay / Activity Kids)
     const relevantBookings = shiftBookings.filter(b => 
       b.status === 'Confirmed' && (
         (b.offerId && b.offerId !== 'none') ||
-        (b.payments && (Number(b.payments['Prepaid by District']) > 0 || Number(b.payments['Razorpay (Website Bookings)']) > 0))
+        (b.payments && (
+          Number(b.payments['Prepaid by District']) > 0 ||
+          Number(b.payments['Razorpay (Website Bookings)']) > 0 ||
+          Number(b.payments['Razorpay( website bookings)']) > 0 ||
+          Number(b.payments['Razorpay']) > 0 ||
+          Number(b.payments['Activity Kids']) > 0 ||
+          Number(b.payments['Activity kids']) > 0
+        ))
       )
     );
 
     relevantBookings.forEach(b => {
       const isDistrictPay = b.payments && Number(b.payments['Prepaid by District']) > 0;
-      const isRazorpayPay = b.payments && Number(b.payments['Razorpay (Website Bookings)']) > 0;
+      const isRazorpayPay = b.payments && (
+        Number(b.payments['Razorpay (Website Bookings)']) > 0 ||
+        Number(b.payments['Razorpay( website bookings)']) > 0 ||
+        Number(b.payments['Razorpay']) > 0
+      );
+      const isActivityKidsPay = b.payments && (
+        Number(b.payments['Activity Kids']) > 0 ||
+        Number(b.payments['Activity kids']) > 0
+      );
       
       const isDistrictOffer = b.offerId === 'district_app' || (b.offerName || '').toLowerCase().includes('district');
       const isRazorpayOffer = b.offerId === 'website_booking' || (b.offerName || '').toLowerCase().includes('razorpay') || (b.offerName || '').toLowerCase().includes('website');
+      const isActivityKidsOffer = b.offerId === 'activity_kids' || (b.offerName || '').toLowerCase().includes('activity kids');
 
       const isDistrict = isDistrictOffer || isDistrictPay;
       const isRazorpay = isRazorpayOffer || isRazorpayPay;
-      const isOnline = isDistrict || isRazorpay;
+      const isActivityKids = isActivityKidsOffer || isActivityKidsPay;
+      const isOnline = isDistrict || isRazorpay || isActivityKids;
       
       const requiresRef = !isOnline;
       const ref = b.referencePerson || '';
@@ -301,6 +318,8 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
           noteText = `Today we had a group of ${pax} who made booking through District for ${laserDuration} game.`;
         } else if (isRazorpay) {
           noteText = `Today we had a group of ${pax} who made booking through Website for ${laserDuration} game.`;
+        } else if (isActivityKids) {
+          noteText = `Today we had a group of ${pax} who made booking through Activity Kids for ${laserDuration} game.`;
         } else if (offer.includes('complimentary') || offerId === 'complimentary') {
           noteText = `Given complementary game to ${kidWording} for ${laserDuration} game as they were under 5 years${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('brochure') || offerId === 'cross_promotion_brochure') {
@@ -323,6 +342,8 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
           noteText = `Today we had a group of ${pax} who made booking through District for ${roomClean}.`;
         } else if (isRazorpay) {
           noteText = `Today we had a group of ${pax} who made booking through Website for ${roomClean}.`;
+        } else if (isActivityKids) {
+          noteText = `Today we had a group of ${pax} who made booking through Activity Kids for ${roomClean}.`;
         } else if (offer.includes('complimentary') || offerId === 'complimentary') {
           noteText = `Given complementary game to ${kidWording} as they were under 5 years for ${roomClean}${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('brochure') || offerId === 'cross_promotion_brochure') {
@@ -340,6 +361,14 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
         } else {
           noteText = `Given ${pct}% discount to ${playerWording} for ${roomClean} as they were ${b.offerName || 'discounted'}${ref ? ` and as per ${ref} reference.` : '.'}`;
         }
+      }
+
+      // Populate Customer Name and Mobile Number below discount/online note
+      if (b.customerName) {
+        noteText += `\nCustomer Name: ${b.customerName}`;
+      }
+      if (b.phone) {
+        noteText += `\nMobile Number: ${b.phone}`;
       }
 
       if (requiresRef && !ref) {
@@ -403,23 +432,23 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
   // Derived Auto Laser Print Text
   const autoLaserPrintText = useMemo(() => {
     if (allDiscountNotes.laser.length === 0) return 'No Laser Shooter notes.';
-    return allDiscountNotes.laser.map((n, idx) => `${idx + 1}. ${n}`).join('\n');
+    return allDiscountNotes.laser.map((n, idx) => `${idx + 1}. ${n}`).join('\n\n');
   }, [allDiscountNotes]);
 
   // Derived Auto Escape Print Text
   const autoEscapePrintText = useMemo(() => {
     const blocks = [];
     if (allDiscountNotes.lab.length > 0) {
-      blocks.push(`*PROFESSOR'S LAB*\n` + allDiscountNotes.lab.map((n, i) => `${i + 1}. ${n}`).join('\n'));
+      blocks.push(`*PROFESSOR'S LAB*\n` + allDiscountNotes.lab.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
     }
     if (allDiscountNotes.lockedIn.length > 0) {
-      blocks.push(`*LOCKED IN*\n` + allDiscountNotes.lockedIn.map((n, i) => `${i + 1}. ${n}`).join('\n'));
+      blocks.push(`*LOCKED IN*\n` + allDiscountNotes.lockedIn.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
     }
     if (allDiscountNotes.sherlock.length > 0) {
-      blocks.push(`*Sherlock*\n` + allDiscountNotes.sherlock.map((n, i) => `${i + 1}. ${n}`).join('\n'));
+      blocks.push(`*Sherlock*\n` + allDiscountNotes.sherlock.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
     }
     if (allDiscountNotes.spy.length > 0) {
-      blocks.push(`*Spy Agent*\n` + allDiscountNotes.spy.map((n, i) => `${i + 1}. ${n}`).join('\n'));
+      blocks.push(`*Spy Agent*\n` + allDiscountNotes.spy.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
     }
     return blocks.length > 0 ? blocks.join('\n\n') : 'No Escape Room notes.';
   }, [allDiscountNotes]);
@@ -434,7 +463,7 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
       autoNotes.forEach((n, idx) => {
         combined.push(`${idx + 1}. ${n}`);
       });
-      return combined.length > 0 ? combined.join('\n') : 'Note: None';
+      return combined.length > 0 ? combined.join('\n\n') : 'Note: None';
     };
 
     const laserNotesText = formatNotesBlock(notes.laser, allDiscountNotes.laser);

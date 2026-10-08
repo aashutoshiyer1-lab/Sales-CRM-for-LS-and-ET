@@ -12,8 +12,10 @@ export const formatSingleDiscountNote = (entry) => {
   const isCustom = entry.reason === 'custom';
   const isOnline = entry.reason === 'district app' || 
                    entry.reason === 'website booking' || 
+                   entry.reason === 'activity kids' ||
                    entry.offerId === 'district_app' || 
-                   entry.offerId === 'website_booking';
+                   entry.offerId === 'website_booking' ||
+                   entry.offerId === 'activity_kids';
 
   const requiresRef = !isOnline && !isCustom;
   const ref = entry.reference || '';
@@ -50,9 +52,16 @@ export const formatSingleDiscountNote = (entry) => {
 
   const notes = [];
 
+  const attachDetails = (baseText) => {
+    let res = baseText;
+    if (entry.customerName) res += `\nCustomer Name: ${entry.customerName}`;
+    if (entry.phone) res += `\nMobile Number: ${entry.phone}`;
+    return res;
+  };
+
   // Leave custom notes as typed by user
   if (isCustom) {
-    const customText = entry.customFullNote?.trim() || 'Custom Discount Note';
+    const customText = attachDetails(entry.customFullNote?.trim() || 'Custom Discount Note');
     if (isLaser) {
       notes.push({ text: customText, roomOrDuration: duration, isLaser: true });
     }
@@ -81,6 +90,8 @@ export const formatSingleDiscountNote = (entry) => {
       text = `Today we had a group of ${paxNum} who made booking through District for ${duration} game.`;
     } else if (reason === 'website booking') {
       text = `Today we had a group of ${paxNum} who made booking through Website for ${duration} game.`;
+    } else if (reason === 'activity kids') {
+      text = `Today we had a group of ${paxNum} who made booking through Activity Kids for ${duration} game.`;
     } else if (reason === 'birthday package') {
       text = `Given ${pct || 20}% discount to ${playerWording} for ${duration} game as it was a birthday package${ref ? ` and as per ${ref} reference.` : '.'}`;
     } else if (reason === 'corporate package') {
@@ -90,7 +101,7 @@ export const formatSingleDiscountNote = (entry) => {
     } else {
       text = `Given ${pct}% discount to ${playerWording} for ${duration} game as they were ${reason}${ref ? ` and as per ${ref} reference.` : '.'}`;
     }
-    notes.push({ text, roomOrDuration: duration, isLaser: true });
+    notes.push({ text: attachDetails(text), roomOrDuration: duration, isLaser: true });
   }
 
   // Escape Time formatting
@@ -121,6 +132,8 @@ export const formatSingleDiscountNote = (entry) => {
         text = `Today we had a group of ${roomPax} who made booking through District for ${roomClean}.`;
       } else if (reason === 'website booking') {
         text = `Today we had a group of ${roomPax} who made booking through Website for ${roomClean}.`;
+      } else if (reason === 'activity kids') {
+        text = `Today we had a group of ${roomPax} who made booking through Activity Kids for ${roomClean}.`;
       } else if (reason === 'birthday package') {
         text = `Given ${pct || 20}% discount to ${rPlayerWording} for ${roomClean} as it was a birthday package${ref ? ` and as per ${ref} reference.` : '.'}`;
       } else if (reason === 'corporate package') {
@@ -130,7 +143,7 @@ export const formatSingleDiscountNote = (entry) => {
       } else {
         text = `Given ${pct}% discount to ${rPlayerWording} for ${roomClean} as they were ${reason}${ref ? ` and as per ${ref} reference.` : '.'}`;
       }
-      notes.push({ text, roomOrDuration: roomClean, isLaser: false });
+      notes.push({ text: attachDetails(text), roomOrDuration: roomClean, isLaser: false });
     });
   }
 
@@ -388,6 +401,7 @@ export const DiscountEntryModal = ({ isOpen, onClose, onAddDiscount }) => {
                 <option value="2nd game discount">2nd Game Discount</option>
                 <option value="district app">District App (Prepaid)</option>
                 <option value="website booking">Website Booking (Razorpay)</option>
+                <option value="activity kids">Activity Kids</option>
                 <option value="kids under 5 years">Kids Under 5 Years (Complementary)</option>
                 <option value="custom">Custom Reason</option>
               </select>

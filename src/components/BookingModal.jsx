@@ -193,6 +193,8 @@ export const BookingModal = ({
       setOfferId('district_app');
     } else if (method === 'Razorpay (Website Bookings)' && (offerId === 'none' || !offerId)) {
       setOfferId('website_booking');
+    } else if (method === 'Activity Kids' && (offerId === 'none' || !offerId)) {
+      setOfferId('activity_kids');
     }
     // Auto untick pending when full payment is filled
     if (finalTotalAmount > 0) {
@@ -211,6 +213,8 @@ export const BookingModal = ({
       setOfferId('district_app');
     } else if (method === 'Razorpay (Website Bookings)' && (parseInt(value, 10) || 0) > 0 && (offerId === 'none' || !offerId)) {
       setOfferId('website_booking');
+    } else if (method === 'Activity Kids' && (parseInt(value, 10) || 0) > 0 && (offerId === 'none' || !offerId)) {
+      setOfferId('activity_kids');
     }
 
     // Auto untick pending checkbox if user enters payment matching or exceeding target
@@ -505,7 +509,7 @@ export const BookingModal = ({
           </div>
 
           {/* Reference Approval Selector when discount or special offer selected */}
-          {offerId !== 'none' && offerId !== 'district_app' && offerId !== 'website_booking' && (
+          {offerId !== 'none' && offerId !== 'district_app' && offerId !== 'website_booking' && offerId !== 'activity_kids' && (
             <div className="p-3.5 rounded-2xl bg-amber-100/80 border border-amber-300 space-y-2 text-xs">
               <div className="flex items-center justify-between font-bold text-amber-900">
                 <span className="flex items-center gap-1">
