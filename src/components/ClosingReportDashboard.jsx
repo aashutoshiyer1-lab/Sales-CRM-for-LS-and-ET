@@ -363,12 +363,15 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
         }
       }
 
-      // Populate Customer Name and Mobile Number below discount/online note
-      if (b.customerName) {
-        noteText += `\nCustomer Name: ${b.customerName}`;
-      }
-      if (b.phone) {
-        noteText += `\nMobile Number: ${b.phone}`;
+      // Populate Customer Name and Mobile Number below discount/online note (except for complimentary games)
+      const isComplimentary = offer.includes('complimentary') || offerId === 'complimentary' || pct === 100;
+      if (!isComplimentary) {
+        if (b.customerName) {
+          noteText += `\nCustomer Name: ${b.customerName}`;
+        }
+        if (b.phone) {
+          noteText += `\nMobile Number: ${b.phone}`;
+        }
       }
 
       if (requiresRef && !ref) {

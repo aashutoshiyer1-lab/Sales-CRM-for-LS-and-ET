@@ -54,8 +54,10 @@ export const formatSingleDiscountNote = (entry) => {
 
   const attachDetails = (baseText) => {
     let res = baseText;
-    if (entry.customerName) res += `\nCustomer Name: ${entry.customerName}`;
-    if (entry.phone) res += `\nMobile Number: ${entry.phone}`;
+    if (!isCompl) {
+      if (entry.customerName) res += `\nCustomer Name: ${entry.customerName}`;
+      if (entry.phone) res += `\nMobile Number: ${entry.phone}`;
+    }
     return res;
   };
 
