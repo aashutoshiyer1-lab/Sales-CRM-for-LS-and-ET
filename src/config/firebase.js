@@ -5,6 +5,7 @@ import {
   ref,
   onValue,
   set,
+  update,
   remove,
   get
 } from 'firebase/database';
@@ -72,6 +73,18 @@ async function restGet(path) {
   return res.json();
 }
 
+async function restPatch(path, data) {
+  const token = await getIdToken();
+  const url = `${DATABASE_URL}/${path}.json${token ? `?auth=${token}` : ''}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`REST PATCH failed: ${res.status}`);
+  return res.json();
+}
+
 // ─── Helper: Convert data object to sorted array ─────────────────
 function dataToArray(data) {
   if (!data || typeof data !== 'object') return [];
@@ -91,23 +104,34 @@ export function deduplicateBookings(list) {
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
 
-// ─── Subscribe: Real-time listener + REST polling fallback ───────
+// ─── Subscribe: Real-time listener + instant cache hydration ─────
 export const subscribeBookings = (callback) => {
-  let lastData = [];
+  let sdkListenerActive = false;
+
+  // 1. Immediately emit cached bookings for 0ms instant display!
+  try {
+    const cached = localStorage.getItem('crm_cached_bookings');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        callback(parsed);
+      }
+    }
+  } catch (e) {}
 
   const emitData = (bookings) => {
-    lastData = bookings;
+    try {
+      localStorage.setItem('crm_cached_bookings', JSON.stringify(bookings));
+    } catch (e) {}
     callback(bookings);
   };
 
-  // 1. Try Firebase SDK real-time listener
-  let sdkListenerActive = false;
+  // 2. Real-time Firebase SDK listener (persistent WebSocket - instant)
   try {
     const bookingsRef = ref(rtdb, 'bookings');
     onValue(bookingsRef, (snapshot) => {
       sdkListenerActive = true;
       const bookings = snapshot.exists() ? dataToArray(snapshot.val()) : [];
-      console.log(`[Firebase SDK] Real-time: ${bookings.length} bookings`);
       emitData(bookings);
     }, (error) => {
       console.warn('[Firebase SDK] Listener error, REST polling active:', error.message);
@@ -117,14 +141,13 @@ export const subscribeBookings = (callback) => {
     console.warn('[Firebase SDK] Setup failed, using REST only:', e.message);
   }
 
-  // 2. REST polling fallback (runs every 3s, ensures data even if SDK fails)
+  // 3. Fallback: only poll if SDK listener has not connected
   const poll = async () => {
+    if (sdkListenerActive) return; // Do not waste network resources when real-time WebSocket is active!
     try {
       const data = await restGet('bookings');
       const bookings = dataToArray(data);
-      // Only emit if SDK listener is NOT active (avoid double updates)
       if (!sdkListenerActive) {
-        console.log(`[Firebase REST] Polled: ${bookings.length} bookings`);
         emitData(bookings);
       }
     } catch (e) {
@@ -132,11 +155,13 @@ export const subscribeBookings = (callback) => {
     }
   };
 
-  // Initial REST fetch (immediate data while SDK connects)
-  poll();
-  const pollInterval = setInterval(poll, 3000);
+  const pollTimer = setTimeout(poll, 1500);
+  const pollInterval = setInterval(() => {
+    if (!sdkListenerActive) poll();
+  }, 10000);
 
   return () => {
+    clearTimeout(pollTimer);
     clearInterval(pollInterval);
   };
 };
@@ -150,7 +175,14 @@ export const saveBooking = async (bookingData) => {
     createdAt: bookingData.createdAt || new Date().toISOString(),
   };
 
-  // Try SDK first, fall back to REST
+  // Immediate local cache update for instant reactivity
+  try {
+    const cached = localStorage.getItem('crm_cached_bookings');
+    const list = cached ? JSON.parse(cached) : [];
+    localStorage.setItem('crm_cached_bookings', JSON.stringify([payload, ...list.filter(b => b.id !== bookingId)]));
+  } catch (e) {}
+
+  // SDK / REST save
   try {
     await set(ref(rtdb, `bookings/${bookingId}`), payload);
     console.log(`[Firebase SDK] Saved ${bookingId}`);
@@ -163,39 +195,46 @@ export const saveBooking = async (bookingData) => {
   return payload;
 };
 
-// ─── Update Booking ──────────────────────────────────────────────
+// ─── Update Booking (Optimized: Direct atomic update without pre-read latency) ───
 export const updateBooking = async (bookingId, bookingData) => {
-  // Read existing data first
-  let existing = {};
-  try {
-    const snapshot = await get(ref(rtdb, `bookings/${bookingId}`));
-    existing = snapshot.exists() ? snapshot.val() : {};
-  } catch (e) {
-    try {
-      existing = (await restGet(`bookings/${bookingId}`)) || {};
-    } catch (e2) {}
-  }
-
-  const updated = {
-    ...existing,
+  const payload = {
     ...bookingData,
     id: bookingId,
     updatedAt: new Date().toISOString(),
   };
 
-  // Try SDK first, fall back to REST
+  // Immediate local cache update
   try {
-    await set(ref(rtdb, `bookings/${bookingId}`), updated);
-    console.log(`[Firebase SDK] Updated ${bookingId}`);
+    const cached = localStorage.getItem('crm_cached_bookings');
+    if (cached) {
+      const list = JSON.parse(cached);
+      localStorage.setItem('crm_cached_bookings', JSON.stringify(list.map(b => b.id === bookingId ? { ...b, ...payload } : b)));
+    }
+  } catch (e) {}
+
+  // Try SDK atomic update first (instant, 0 pre-read roundtrips)
+  try {
+    await update(ref(rtdb, `bookings/${bookingId}`), payload);
+    console.log(`[Firebase SDK] Fast Updated ${bookingId}`);
   } catch (sdkErr) {
-    console.warn(`[Firebase SDK] Update failed, trying REST:`, sdkErr.message);
-    await restPut(`bookings/${bookingId}`, updated);
-    console.log(`[Firebase REST] Updated ${bookingId}`);
+    console.warn(`[Firebase SDK] Update failed, trying REST PATCH:`, sdkErr.message);
+    await restPatch(`bookings/${bookingId}`, payload);
+    console.log(`[Firebase REST] Fast Updated ${bookingId}`);
   }
+
+  return payload;
 };
 
 // ─── Delete Booking ──────────────────────────────────────────────
 export const deleteBooking = async (bookingId) => {
+  try {
+    const cached = localStorage.getItem('crm_cached_bookings');
+    if (cached) {
+      const list = JSON.parse(cached);
+      localStorage.setItem('crm_cached_bookings', JSON.stringify(list.filter(b => b.id !== bookingId)));
+    }
+  } catch (e) {}
+
   // Try SDK first, fall back to REST
   try {
     await remove(ref(rtdb, `bookings/${bookingId}`));

@@ -21,7 +21,8 @@ import {
   Clock3,
   Gift,
   Zap,
-  Flame
+  Flame,
+  Camera
 } from 'lucide-react';
 
 export const BookingModal = ({ 
@@ -43,7 +44,10 @@ export const BookingModal = ({
   const [rateMode, setRateMode] = useState(() => isWeekend(new Date().toISOString().split('T')[0]) ? 'weekend' : 'weekday');
   const [timeSlot, setTimeSlot] = useState('11:00');
   const [offerId, setOfferId] = useState('none');
+  const [customDiscountReason, setCustomDiscountReason] = useState('');
+  const [customDiscountPercentage, setCustomDiscountPercentage] = useState('50');
   const [referencePerson, setReferencePerson] = useState('Nayeem Sir');
+  const [categoryOverride, setCategoryOverride] = useState('');
   
   const [isPendingBooking, setIsPendingBooking] = useState(false);
 
@@ -96,7 +100,10 @@ export const BookingModal = ({
       setRateMode(editingBooking.rateMode || (isWeekend(targetDate) ? 'weekend' : 'weekday'));
       setTimeSlot(editingBooking.timeSlot || '11:00');
       setOfferId(editingBooking.offerId || 'none');
+      setCustomDiscountReason(editingBooking.customDiscountReason || (editingBooking.offerId === 'custom_discount' ? editingBooking.offerName : '') || '');
+      setCustomDiscountPercentage(editingBooking.discountPercentage !== undefined ? String(editingBooking.discountPercentage) : '50');
       setReferencePerson(editingBooking.referencePerson || 'Nayeem Sir');
+      setCategoryOverride(editingBooking.categoryOverride || '');
       setIsPendingBooking(editingBooking.status === 'Pending');
       
       const prevPay = editingBooking.payments || {};
@@ -119,7 +126,10 @@ export const BookingModal = ({
       setRateMode(isWeekend(targetDate) ? 'weekend' : 'weekday');
       setTimeSlot(initialSlot.timeSlot || '11:00');
       setOfferId('none');
+      setCustomDiscountReason('');
+      setCustomDiscountPercentage('50');
       setReferencePerson('Nayeem Sir');
+      setCategoryOverride('');
       setIsPendingBooking(false);
       setPayments({
         Cash: '',
@@ -164,6 +174,8 @@ export const BookingModal = ({
     date,
     offerId,
     rateModeOverride: rateMode,
+    customDiscountPercentage,
+    customDiscountReason,
   });
 
   const isComplimentary = offerId === 'complimentary';
@@ -171,13 +183,18 @@ export const BookingModal = ({
 
   const handleOfferChange = (newOfferId) => {
     setOfferId(newOfferId);
+    if (newOfferId === 'custom_discount' && !customDiscountPercentage) {
+      setCustomDiscountPercentage('50');
+    }
   };
 
   const splitTotal = Object.values(payments).reduce((sum, val) => sum + (parseInt(val, 10) || 0), 0);
   const isExactMatch = isComplimentary || (finalTotalAmount === 0 && splitTotal === 0) || (finalTotalAmount > 0 && splitTotal === finalTotalAmount);
   const remainingAmount = finalTotalAmount - splitTotal;
 
-  const canSubmit = gameName && paxCount && customerName && phone && (isExactMatch || isPendingBooking);
+  const isCustomOffer = offerId === 'custom_discount';
+  const isCustomValid = !isCustomOffer || (customDiscountReason.trim().length > 0 && customDiscountPercentage !== '');
+  const canSubmit = gameName && paxCount && customerName && phone && isCustomValid && (isExactMatch || isPendingBooking);
 
   const handleAutoFillSplit = (method) => {
     setPayments({
@@ -252,10 +269,19 @@ export const BookingModal = ({
       timeSlot,
       rateMode,
       offerId: pricingInfo.offerId,
-      offerName: pricingInfo.offerName,
+      offerName: offerId === 'custom_discount' ? (customDiscountReason.trim() || 'Custom Discount') : pricingInfo.offerName,
+      customDiscountReason: offerId === 'custom_discount' ? customDiscountReason.trim() : '',
       discountPercentage: pricingInfo.discountPercentage,
       discountAmount: pricingInfo.discountAmount,
       referencePerson: pricingInfo.discountPercentage > 0 ? referencePerson : null,
+      categoryOverride: categoryOverride || (offerId === 'complimentary' ? '4-6' : null),
+      customCategory: (categoryOverride || (offerId === 'complimentary' ? '4-6' : null)) 
+        ? ((categoryOverride || (offerId === 'complimentary' ? '4-6' : '')) === '2-3' 
+            ? '2-3 Players Category' 
+            : (categoryOverride || (offerId === 'complimentary' ? '4-6' : '')) === '4-6' 
+              ? '4-6 Players Category' 
+              : '7+ Players Category') 
+        : null,
       baseTotal: pricingInfo.baseTotal,
       totalAmount: finalTotalAmount,
       payments: numericPayments,
@@ -275,24 +301,24 @@ export const BookingModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-slate-50 border border-slate-300 rounded-3xl max-w-xl w-full p-5 shadow-2xl relative my-4 overflow-hidden max-h-[92vh] flex flex-col justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-md overflow-y-auto">
+      <div className="bg-slate-50 border border-slate-300 rounded-3xl max-w-3xl lg:max-w-4xl w-full p-6 sm:p-8 shadow-2xl relative my-6 overflow-hidden max-h-[92vh] flex flex-col justify-between">
         
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-300 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className={`p-2.5 rounded-2xl border ${
+        <div className="flex items-center justify-between pb-4 border-b border-slate-300 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className={`p-3 rounded-2xl border ${
               activeVenue === VENUES.ESCAPE_TIME 
                 ? 'bg-red-100 text-red-700 border-red-300 shadow-sm' 
                 : 'bg-cyan-100 text-cyan-700 border-cyan-300 shadow-sm'
             }`}>
-              {editingBooking ? <Edit3 className="w-5 h-5" /> : activeVenue === VENUES.ESCAPE_TIME ? <Lock className="w-5 h-5" /> : <Gamepad2 className="w-5 h-5" />}
+              {editingBooking ? <Edit3 className="w-6 h-6" /> : activeVenue === VENUES.ESCAPE_TIME ? <Lock className="w-6 h-6" /> : <Gamepad2 className="w-6 h-6" />}
             </div>
             <div>
-              <h2 className="text-lg font-extrabold text-slate-900">
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                 {editingBooking ? 'Edit Game Entry' : 'New Game Entry'}
               </h2>
-              <p className="text-xs text-slate-600 font-mono font-semibold">
+              <p className="text-xs sm:text-sm text-slate-600 font-mono font-semibold">
                 {activeVenue} • Fast Entry Form
               </p>
             </div>
@@ -300,25 +326,25 @@ export const BookingModal = ({
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-slate-200/80 text-slate-600 hover:text-slate-900 hover:bg-slate-300 transition-all"
+            className="p-2.5 rounded-2xl bg-slate-200/80 text-slate-600 hover:text-slate-900 hover:bg-slate-300 transition-all"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Scrollable Form */}
-        <form onSubmit={handleSubmit} autoComplete="off" className="space-y-3.5 my-3 overflow-y-auto pr-1">
+        <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4 sm:space-y-5 my-4 overflow-y-auto pr-1">
           
           {/* Customer Inputs */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             
             {/* Name */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1 uppercase tracking-wider">
+              <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
                 Customer Name <span className="text-red-600">*</span>
               </label>
               <div className="relative">
-                <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3" />
+                <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
                   type="text"
                   required
@@ -326,18 +352,18 @@ export const BookingModal = ({
                   placeholder="Full customer name"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-300 text-xs text-slate-900 placeholder-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none font-semibold"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none font-semibold shadow-sm"
                 />
               </div>
             </div>
 
             {/* Phone */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1 uppercase tracking-wider">
+              <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
                 Phone Number <span className="text-red-600">*</span>
               </label>
               <div className="relative">
-                <Phone className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3" />
+                <Phone className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
                   type="tel"
                   required
@@ -345,39 +371,39 @@ export const BookingModal = ({
                   placeholder="+91 Mobile number"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-300 text-xs text-slate-900 placeholder-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none font-mono font-bold"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none font-mono font-bold shadow-sm"
                 />
               </div>
             </div>
 
             {/* Email */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1 uppercase tracking-wider">
+              <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
                 Email <span className="text-slate-500 font-normal lowercase">(optional)</span>
               </label>
               <div className="relative">
-                <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3" />
+                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
                   type="email"
                   autoComplete="off"
                   placeholder="customer@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-300 text-xs text-slate-900 placeholder-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none font-medium"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none font-medium shadow-sm"
                 />
               </div>
             </div>
 
             {/* Game Selector */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1 uppercase tracking-wider">
+              <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
                 Game Selection <span className="text-red-600">*</span>
               </label>
               <select
                 required
                 value={gameName}
                 onChange={(e) => setGameName(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-900 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none cursor-pointer"
+                className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-sm font-bold text-slate-900 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none cursor-pointer shadow-sm"
               >
                 <option value="">-- Select Game --</option>
                 {currentVenueDetails.games.map((g) => (
@@ -390,11 +416,11 @@ export const BookingModal = ({
 
             {/* Pax Count */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1 uppercase tracking-wider">
+              <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
                 Number of Players <span className="text-red-600">*</span>
               </label>
               <div className="relative">
-                <Users className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3" />
+                <Users className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
                   type="number"
                   min="1"
@@ -404,33 +430,33 @@ export const BookingModal = ({
                   value={paxCount}
                   onChange={(e) => setPaxCount(e.target.value)}
                   onWheel={(e) => e.target.blur()}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-300 text-xs font-mono font-extrabold text-slate-900 placeholder-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-slate-300 text-sm font-mono font-extrabold text-slate-900 placeholder-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none shadow-sm"
                 />
               </div>
             </div>
 
             {/* Date & Dynamic 12-Hour Operating Hours Time Slot */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="p-2 rounded-2xl bg-cyan-100/60 border border-cyan-300">
-                <label className="block text-[10px] font-black text-cyan-800 mb-1 uppercase tracking-wider flex items-center gap-1">
-                  <CalendarIcon className="w-3 h-3 text-cyan-700" /> Date
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="p-2.5 rounded-2xl bg-cyan-100/60 border border-cyan-300">
+                <label className="block text-[11px] font-black text-cyan-800 mb-1 uppercase tracking-wider flex items-center gap-1">
+                  <CalendarIcon className="w-3.5 h-3.5 text-cyan-700" /> Date
                 </label>
                 <input
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-2 py-1.5 rounded-lg bg-white border border-cyan-300 text-xs font-mono font-bold text-slate-900 focus:outline-none cursor-pointer"
+                  className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-cyan-300 text-xs sm:text-sm font-mono font-bold text-slate-900 focus:outline-none cursor-pointer"
                 />
               </div>
               
-              <div className="p-2 rounded-2xl bg-amber-100/60 border border-amber-300">
-                <label className="block text-[10px] font-black text-amber-800 mb-1 uppercase tracking-wider flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-amber-700" /> Time Slot (12h)
+              <div className="p-2.5 rounded-2xl bg-amber-100/60 border border-amber-300">
+                <label className="block text-[11px] font-black text-amber-800 mb-1 uppercase tracking-wider flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-amber-700" /> Time Slot (12h)
                 </label>
                 <select
                   value={timeSlot}
                   onChange={(e) => setTimeSlot(e.target.value)}
-                  className="w-full px-2 py-1.5 rounded-lg bg-white border border-amber-300 text-xs font-mono font-bold text-amber-900 focus:outline-none cursor-pointer"
+                  className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-amber-300 text-xs sm:text-sm font-mono font-bold text-amber-900 focus:outline-none cursor-pointer"
                 >
                   {dynamicTimeSlotOptions.map((s) => (
                     <option key={s.value} value={s.value}>
@@ -441,39 +467,77 @@ export const BookingModal = ({
               </div>
             </div>
 
+            {/* Escape Room Category Bracket Switcher */}
+            {activeVenue === VENUES.ESCAPE_TIME && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-amber-700" />
+                    Escape Room Category Bracket
+                  </label>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-400">
+                    {offerId === 'complimentary' ? 'Auto-linked to 4-6 Bracket' : 'Customizable'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: '2-3', label: '2-3 Players' },
+                    { id: '4-6', label: '4-6 Players' },
+                    { id: '7+', label: '7+ Players' }
+                  ].map(cat => {
+                    const currentCat = categoryOverride || (offerId === 'complimentary' ? '4-6' : (Number(paxCount) >= 7 ? '7+' : Number(paxCount) >= 4 ? '4-6' : '2-3'));
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setCategoryOverride(cat.id)}
+                        className={`py-2 px-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all border ${
+                          currentCat === cat.id
+                            ? 'bg-amber-600 text-white border-amber-700 shadow-md scale-95'
+                            : 'bg-white text-amber-950 border-amber-300 hover:bg-amber-100'
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Pricing Rate Tier Switcher (Choose between Weekday and Weekend per entry) */}
-            <div className="p-2.5 rounded-2xl bg-slate-100/90 border border-slate-300 space-y-1.5 sm:col-span-2">
+            <div className="p-3 rounded-2xl bg-slate-100/90 border border-slate-300 space-y-2 sm:col-span-2">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                   Pricing Rate Tier
                 </label>
-                <span className="text-[10px] font-mono font-semibold text-slate-500">
+                <span className="text-xs font-mono font-semibold text-slate-500">
                   Default for Date: <strong className="text-slate-800">{isWeekend(date) ? 'Weekend' : 'Weekday'}</strong>
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-200/80 border border-slate-300">
+              <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-slate-200/80 border border-slate-300">
                 <button
                   type="button"
                   onClick={() => setRateMode('weekday')}
-                  className={`py-1.5 px-2 rounded-lg text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 ${
+                  className={`py-2 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 ${
                     rateMode === 'weekday'
-                      ? 'bg-cyan-600 text-white shadow-sm'
+                      ? 'bg-cyan-600 text-white shadow-md'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/50'
                   }`}
                 >
-                  <Zap className="w-3.5 h-3.5" />
+                  <Zap className="w-4 h-4" />
                   <span>Weekday Rate</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setRateMode('weekend')}
-                  className={`py-1.5 px-2 rounded-lg text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 ${
+                  className={`py-2 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 ${
                     rateMode === 'weekend'
-                      ? 'bg-amber-600 text-white shadow-sm'
+                      ? 'bg-amber-600 text-white shadow-md'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/50'
                   }`}
                 >
-                  <Flame className="w-3.5 h-3.5" />
+                  <Flame className="w-4 h-4" />
                   <span>Weekend Rate</span>
                 </button>
               </div>
@@ -482,14 +546,14 @@ export const BookingModal = ({
           </div>
 
           {/* Offers Dropdown */}
-          <div className="p-3.5 rounded-2xl bg-slate-100/80 border border-slate-300 space-y-2">
+          <div className="p-4 rounded-2xl bg-slate-100/90 border border-slate-300 space-y-2.5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
-                <Tag className="w-3.5 h-3.5 text-amber-700" />
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-amber-800">
+                <Tag className="w-4 h-4 text-amber-700" />
                 <span>Select Offer / Discount</span>
               </div>
               {pricingInfo.discountPercentage > 0 && (
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-200 text-amber-900 border border-amber-400">
+                <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-amber-200 text-amber-900 border border-amber-400">
                   Ref: {referencePerson}
                 </span>
               )}
@@ -498,7 +562,7 @@ export const BookingModal = ({
             <select
               value={offerId}
               onChange={(e) => handleOfferChange(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-xs font-bold text-amber-900 focus:border-amber-600 focus:outline-none cursor-pointer"
+              className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-xs sm:text-sm font-bold text-amber-900 focus:border-amber-600 focus:outline-none cursor-pointer shadow-sm"
             >
               {OFFERS.filter(o => !o.venue || o.venue === activeVenue).map((o) => (
                 <option key={o.id} value={o.id}>
@@ -506,24 +570,82 @@ export const BookingModal = ({
                 </option>
               ))}
             </select>
+
+            {/* Custom Discount Reason and Percentage */}
+            {offerId === 'custom_discount' && (
+              <div className="pt-3 space-y-3 border-t border-slate-200 mt-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                    Custom Discount Reason <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter custom reason (e.g. Regular customer, Group negotiation, etc.)"
+                    value={customDiscountReason}
+                    onChange={(e) => setCustomDiscountReason(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:ring-2 focus:ring-amber-100 focus:outline-none font-semibold shadow-sm"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Discount Percentage (%) <span className="text-red-600">*</span>
+                    </label>
+                    <span className="text-xs font-mono font-bold text-amber-700">
+                      {customDiscountPercentage || 0}% OFF
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      required
+                      placeholder="e.g. 50 or 100"
+                      value={customDiscountPercentage}
+                      onChange={(e) => setCustomDiscountPercentage(e.target.value)}
+                      className="w-32 px-3 py-2 rounded-xl bg-white border border-slate-300 text-sm font-mono font-bold text-slate-900 focus:border-amber-600 focus:outline-none shadow-sm"
+                    />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {['10', '20', '30', '50', '100'].map(p => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setCustomDiscountPercentage(p)}
+                          className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-mono font-bold border transition-all ${
+                            customDiscountPercentage === p
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-md'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          {p}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Reference Approval Selector when discount or special offer selected */}
           {offerId !== 'none' && offerId !== 'district_app' && offerId !== 'website_booking' && offerId !== 'activity_kids' && (
-            <div className="p-3.5 rounded-2xl bg-amber-100/80 border border-amber-300 space-y-2 text-xs">
+            <div className="p-4 rounded-2xl bg-amber-100/80 border border-amber-300 space-y-2.5 text-xs sm:text-sm">
               <div className="flex items-center justify-between font-bold text-amber-900">
-                <span className="flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-amber-700" />
                   Whose Reference Approved This Discount? (Mandatory)
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
                 {REFERENCES.map((ref) => (
                   <button
                     key={ref}
                     type="button"
                     onClick={() => setReferencePerson(ref)}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold font-mono transition-all ${
+                    className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold font-mono transition-all ${
                       referencePerson === ref
                         ? 'bg-amber-600 text-white shadow-md font-extrabold scale-95'
                         : 'bg-white text-amber-900 hover:bg-amber-200 border border-amber-300'
@@ -533,47 +655,54 @@ export const BookingModal = ({
                   </button>
                 ))}
               </div>
+
+              {referencePerson === 'Khaja Sir' && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs sm:text-sm text-amber-950 flex items-center gap-2 font-bold shadow-sm">
+                  <Camera className="w-4 h-4 text-amber-800 flex-shrink-0" />
+                  <span>📸 Mandatory: Take a screenshot of Khaja Sir reference approval and attach in closing message.</span>
+                </div>
+              )}
             </div>
           )}
 
           {/* Pricing Calculation Display */}
-          <div className="p-3.5 rounded-2xl bg-slate-100/80 border border-slate-300">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                <Calculator className="w-3.5 h-3.5 text-cyan-700" />
+          <div className="p-4 rounded-2xl bg-slate-100/90 border border-slate-300">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-slate-800">
+                <Calculator className="w-4 h-4 text-cyan-700" />
                 <span>Auto-Pricing Engine</span>
               </div>
-              <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full ${
+              <span className={`text-[10px] sm:text-xs font-mono font-bold px-2.5 py-1 rounded-full ${
                 pricingInfo.isWeekend ? 'bg-amber-200 text-amber-900 border border-amber-400' : 'bg-cyan-200 text-cyan-900 border border-cyan-400'
               }`}>
                 {pricingInfo.dayType}
               </span>
             </div>
 
-            <div className="grid grid-cols-4 gap-2 text-center">
-              <div className="p-2 rounded-xl bg-white border border-slate-300 shadow-sm">
-                <div className="text-[9px] text-slate-600 font-bold uppercase">Rate/Player</div>
-                <div className="text-xs font-extrabold text-slate-900 font-mono">₹{pricingInfo.ratePerPax}</div>
+            <div className="grid grid-cols-4 gap-2.5 text-center">
+              <div className="p-2.5 rounded-xl bg-white border border-slate-300 shadow-sm">
+                <div className="text-[10px] sm:text-xs text-slate-600 font-bold uppercase">Rate/Player</div>
+                <div className="text-xs sm:text-sm font-extrabold text-slate-900 font-mono mt-0.5">₹{pricingInfo.ratePerPax}</div>
               </div>
-              <div className="p-2 rounded-xl bg-white border border-slate-300 shadow-sm">
-                <div className="text-[9px] text-slate-600 font-bold uppercase">Base Total</div>
-                <div className="text-xs font-extrabold text-slate-900 font-mono">₹{pricingInfo.baseTotal.toLocaleString()}</div>
+              <div className="p-2.5 rounded-xl bg-white border border-slate-300 shadow-sm">
+                <div className="text-[10px] sm:text-xs text-slate-600 font-bold uppercase">Base Total</div>
+                <div className="text-xs sm:text-sm font-extrabold text-slate-900 font-mono mt-0.5">₹{pricingInfo.baseTotal.toLocaleString()}</div>
               </div>
-              <div className="p-2 rounded-xl bg-white border border-slate-300 shadow-sm">
-                <div className="text-[9px] text-amber-700 font-bold uppercase">Discount</div>
-                <div className="text-xs font-extrabold text-amber-700 font-mono">-₹{pricingInfo.discountAmount.toLocaleString()}</div>
+              <div className="p-2.5 rounded-xl bg-white border border-slate-300 shadow-sm">
+                <div className="text-[10px] sm:text-xs text-amber-700 font-bold uppercase">Discount</div>
+                <div className="text-xs sm:text-sm font-extrabold text-amber-700 font-mono mt-0.5">-₹{pricingInfo.discountAmount.toLocaleString()}</div>
               </div>
-              <div className="p-2 rounded-xl bg-emerald-100/80 border border-emerald-300 shadow-sm">
-                <div className="text-[9px] text-emerald-800 font-extrabold uppercase">Final Total</div>
-                <div className="text-sm font-black text-emerald-800 font-mono">₹{finalTotalAmount.toLocaleString()}</div>
+              <div className="p-2.5 rounded-xl bg-emerald-100/90 border border-emerald-300 shadow-sm">
+                <div className="text-[10px] sm:text-xs text-emerald-800 font-extrabold uppercase">Final Total</div>
+                <div className="text-sm sm:text-base font-black text-emerald-800 font-mono mt-0.5">₹{finalTotalAmount.toLocaleString()}</div>
               </div>
             </div>
           </div>
 
           {/* Pending Option */}
           {!isComplimentary && (
-            <div className="p-3.5 rounded-2xl bg-amber-100/80 border border-amber-300 flex items-center justify-between">
-              <label className="flex items-center gap-2.5 cursor-pointer text-xs font-bold text-amber-950">
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-100/80 border border-amber-300 flex items-center justify-between">
+              <label className="flex items-center gap-3 cursor-pointer text-xs sm:text-sm font-bold text-amber-950">
                 <input
                   type="checkbox"
                   checked={isPendingBooking}
@@ -587,22 +716,23 @@ export const BookingModal = ({
           )}
 
           {/* Split Payment Section */}
-          <div className={`p-3.5 rounded-2xl bg-slate-100/80 border transition-all ${
+          <div className={`p-4 rounded-2xl bg-slate-100/90 border transition-all ${
             isPendingBooking ? 'opacity-80 border-amber-300 bg-amber-50' : 'border-slate-300'
           }`}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                <CreditCard className="w-3.5 h-3.5 text-cyan-700" />
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-800">
+                <CreditCard className="w-4 h-4 text-cyan-700" />
                 <span>Split Payment Entry</span>
               </div>
               {!isComplimentary && (
-                <div className="text-[10px] text-slate-600 font-semibold">
-                  Auto Fill: {PAYMENT_METHODS.map(m => (
+                <div className="text-xs text-slate-600 font-semibold flex items-center gap-1 flex-wrap">
+                  <span>Auto Fill:</span>
+                  {PAYMENT_METHODS.map(m => (
                     <button
                       key={m}
                       type="button"
                       onClick={() => handleAutoFillSplit(m)}
-                      className="ml-1 px-1.5 py-0.5 rounded-md bg-white border border-slate-300 hover:bg-slate-200 text-[9px] text-slate-800 font-mono font-bold transition-all shadow-sm"
+                      className="px-2 py-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-200 text-[10px] sm:text-xs text-slate-800 font-mono font-bold transition-all shadow-sm"
                     >
                       100% {m.split(' ')[0]}
                     </button>
@@ -612,10 +742,10 @@ export const BookingModal = ({
             </div>
 
             {/* Payment Fields */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {PAYMENT_METHODS.map((method) => (
-                <div key={method} className="bg-white p-2 rounded-xl border border-slate-300 shadow-sm">
-                  <label className="block text-[10px] font-bold text-slate-700 truncate mb-1">
+                <div key={method} className="bg-white p-2.5 rounded-xl border border-slate-300 shadow-sm">
+                  <label className="block text-[11px] sm:text-xs font-bold text-slate-700 truncate mb-1">
                     {method} (₹)
                   </label>
                   <input
@@ -626,30 +756,30 @@ export const BookingModal = ({
                     value={isComplimentary ? '' : payments[method]}
                     onChange={(e) => handlePaymentChange(method, e.target.value)}
                     onWheel={(e) => e.target.blur()}
-                    className="w-full px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-300 text-xs font-mono font-bold text-slate-900 placeholder-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-50"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-300 text-xs sm:text-sm font-mono font-bold text-slate-900 placeholder-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-50"
                   />
                 </div>
               ))}
             </div>
 
             {/* Verification Bar */}
-            <div className={`mt-3 p-3 rounded-xl border flex items-center justify-between transition-all ${
+            <div className={`mt-3.5 p-3.5 rounded-xl border flex items-center justify-between transition-all ${
               isComplimentary
                 ? 'bg-purple-100 border-purple-300 text-purple-950'
                 : isExactMatch
                   ? 'bg-emerald-100 border-emerald-300 text-emerald-950'
                   : 'bg-amber-100 border-amber-300 text-amber-950'
             }`}>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 {isComplimentary ? (
-                  <Gift className="w-4 h-4 text-purple-700 shrink-0" />
+                  <Gift className="w-5 h-5 text-purple-700 shrink-0" />
                 ) : isExactMatch ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
                 ) : (
-                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                  <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0" />
                 )}
                 <div>
-                  <div className="text-[11px] font-extrabold font-mono">
+                  <div className="text-xs sm:text-sm font-extrabold font-mono">
                     {isComplimentary
                       ? 'COMPLIMENTARY GAME (KIDS UNDER 6) - NO PAYMENT COLLECTED'
                       : isExactMatch
@@ -660,28 +790,38 @@ export const BookingModal = ({
                             ? `UNPAID: ₹${remainingAmount.toLocaleString()}`
                             : `OVERPAID: ₹${Math.abs(remainingAmount.toLocaleString())}`}
                   </div>
-                  <div className="text-[9px] text-slate-700 font-mono font-semibold">
+                  <div className="text-[10px] sm:text-xs text-slate-700 font-mono font-semibold mt-0.5">
                     Split Paid: ₹{splitTotal.toLocaleString()} / Target Total: ₹{finalTotalAmount.toLocaleString()}
                   </div>
                 </div>
               </div>
             </div>
 
+            {Boolean(
+              Number(payments['Prepaid by District']) > 0 ||
+              Number(payments['Razorpay (Website Bookings)']) > 0 ||
+              Number(payments['Activity Kids']) > 0
+            ) && (
+              <div className="mt-3 p-3 bg-purple-50 border border-purple-300 rounded-xl text-xs sm:text-sm text-purple-950 flex items-center gap-2 font-bold shadow-sm">
+                <Camera className="w-4 h-4 text-purple-700 flex-shrink-0" />
+                <span>📸 Attach booking / payment screenshots in closing.</span>
+              </div>
+            )}
           </div>
 
           {/* Action Footer */}
-          <div className="pt-2 flex items-center justify-end gap-2 shrink-0">
+          <div className="pt-3 flex items-center justify-end gap-3 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-200/80 hover:bg-slate-300 border border-slate-300 transition-all"
+              className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-700 hover:text-slate-900 bg-slate-200/80 hover:bg-slate-300 border border-slate-300 transition-all"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!canSubmit || submitting}
-              className={`px-5 py-2.5 rounded-xl text-xs font-extrabold text-white transition-all shadow-md flex items-center gap-1.5 ${
+              className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold text-white transition-all shadow-md flex items-center gap-2 ${
                 canSubmit && !submitting
                   ? isComplimentary
                     ? 'bg-purple-600 hover:bg-purple-700 active:scale-95'

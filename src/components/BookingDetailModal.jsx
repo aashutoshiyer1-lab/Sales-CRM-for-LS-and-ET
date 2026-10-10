@@ -153,6 +153,13 @@ export const BookingDetailModal = ({
               ))}
             </div>
 
+            {booking.referencePerson === 'Khaja Sir' && (
+              <div className="pt-1 flex items-center gap-1.5 text-xs font-black text-amber-950 bg-amber-100 p-2.5 rounded-xl border border-amber-300">
+                <Camera className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>Attach Khaja Sir approval screenshot in closing</span>
+              </div>
+            )}
+
             {booking.payments && (
               (Number(booking.payments['Prepaid by District']) > 0) ||
               (Number(booking.payments['Razorpay (Website Bookings)']) > 0) ||

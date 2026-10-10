@@ -23,6 +23,7 @@ export const OFFERS = [
   { id: 'district_app', name: 'District App (Prepaid by District)', percentage: 0 },
   { id: 'website_booking', name: 'Website Booking (Razorpay)', percentage: 0 },
   { id: 'activity_kids', name: 'Activity Kids', percentage: 0 },
+  { id: 'custom_discount', name: 'Custom Reason Discount (Custom %)', percentage: 0 },
   { id: 'complimentary', name: 'Complimentary Game (Kids Under 5 Years - 100% OFF)', percentage: 100 },
 ];
 

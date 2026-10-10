@@ -34,8 +34,15 @@ export function App() {
     return localStorage.getItem('crm_active_venue') || VENUES.ESCAPE_TIME;
   });
 
-  // Start with empty array — cloud data will arrive via onValue listener
-  const [bookings, setBookings] = useState([]);
+  // Initialize with cached bookings immediately for 0ms instant load, updated live via RTDB
+  const [bookings, setBookings] = useState(() => {
+    try {
+      const cached = localStorage.getItem('crm_cached_bookings');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [selectedSlotInfo, setSelectedSlotInfo] = useState({});
@@ -191,6 +198,7 @@ export function App() {
             onEditBooking={(b) => handleOpenEditBookingModal(b)}
             onDeleteBooking={handleDeleteBooking}
             onResetAllBookings={handleResetAllBookings}
+            onUpdateBooking={(bookingId, updates) => handleSaveOrUpdateBooking(updates, bookingId)}
           />
         )}
 

@@ -16,7 +16,8 @@ import {
   Filter,
   Layers,
   ShieldCheck,
-  Grid
+  Grid,
+  Camera
 } from 'lucide-react';
 
 export const CalendarDashboard = ({ 
@@ -381,7 +382,7 @@ export const CalendarDashboard = ({
                             <span className={`text-xs font-black uppercase px-2.5 py-0.5 rounded-full font-mono truncate ${
                               isEscape ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-cyan-100 text-cyan-800 border border-cyan-200'
                             }`}>
-                              {b.gameName} ({getGameCategoryLabel(b)})
+                              {b.gameName} ({getGameCategoryLabel(b, bookings)})
                             </span>
 
                             {isPending ? (
@@ -419,6 +420,12 @@ export const CalendarDashboard = ({
                                 <div className="inline-flex items-center gap-1 text-[10px] sm:text-xs font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
                                   <ShieldCheck className="w-2.5 h-2.5 text-emerald-600" />
                                   Ref: {b.referencePerson}
+                                </div>
+                              )}
+                              {b.referencePerson === 'Khaja Sir' && (
+                                <div className="inline-flex items-center gap-1 text-[10px] sm:text-xs font-mono font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                                  <Camera className="w-2.5 h-2.5 text-amber-700" />
+                                  Attach screenshot
                                 </div>
                               )}
                             </div>

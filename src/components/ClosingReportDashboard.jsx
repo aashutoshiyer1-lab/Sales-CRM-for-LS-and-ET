@@ -18,9 +18,11 @@ import {
   Printer,
   Share2,
   RotateCcw,
-  X
+  X,
+  Camera
 } from 'lucide-react';
 import { VENUES } from '../config/venueData';
+import { getBookingCategory, getGameCategoryLabel } from '../utils/pricingEngine';
 import { DiscountEntryModal, formatSingleDiscountNote } from './DiscountEntryModal';
 
 export const getInitialShiftDate = () => {
@@ -124,9 +126,18 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
     return shiftBookings.filter(b => b.venue === VENUES.LASER_SHOOTER && b.status === 'Confirmed');
   }, [shiftBookings]);
 
-  // Sessions Count: Paid bookings only (Do NOT count 100% complimentary as sessions)
+  // Helper: Only pure complimentary games (kids under 5/6) use complimentary game session logic.
+  // Bookings with custom notes/discounts and customer details count normally as sessions!
+  const isPureComplimentary = (b) => {
+    if (!b) return false;
+    if (b.offerId === 'custom_discount' || Boolean(b.customDiscountReason)) return false;
+    const offer = (b.offerName || '').toLowerCase();
+    return b.offerId === 'complimentary' || offer.includes('complimentary');
+  };
+
+  // Sessions Count: Count all real sessions (exclude only pure complimentary companion games)
   const laserSessions = useMemo(() => {
-    return laserBookings.filter(b => (b.totalAmount || 0) > 0).length;
+    return laserBookings.filter(b => !isPureComplimentary(b)).length;
   }, [laserBookings]);
 
   const laserTotalGames = useMemo(() => {
@@ -153,7 +164,7 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
 
   const derivedComplementaryCountLaser = useMemo(() => {
     const totalComplPax = laserBookings
-      .filter(b => b.offerId === 'complimentary' || b.totalAmount === 0)
+      .filter(isPureComplimentary)
       .reduce((sum, b) => sum + (Number(b.paxCount) || 0), 0);
     return String(totalComplPax).padStart(2, '0');
   }, [laserBookings]);
@@ -172,12 +183,12 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
       b.gameName && b.gameName.toLowerCase().includes(roomNamePattern.toLowerCase())
     );
 
-    const sessions = roomBookings.filter(b => (b.totalAmount || 0) > 0).length;
+    const sessions = roomBookings.filter(b => !isPureComplimentary(b)).length;
     const games = roomBookings.reduce((sum, b) => sum + (Number(b.paxCount) || 0), 0);
     const sale = roomBookings.reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
     
     const complPax = roomBookings
-      .filter(b => b.offerId === 'complimentary' || b.totalAmount === 0)
+      .filter(isPureComplimentary)
       .reduce((sum, b) => sum + (Number(b.paxCount) || 0), 0);
 
     let bracket2to3 = 0;
@@ -185,13 +196,27 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
     let bracket7plus = 0;
     let bracket5 = 0;
 
+    // Track total players per session slot for 5-player bracket attribution
+    const sessionGroupPax = {};
+    roomBookings.forEach(b => {
+      const slotKey = b.timeSlot || b.id;
+      sessionGroupPax[slotKey] = (sessionGroupPax[slotKey] || 0) + (Number(b.paxCount) || 0);
+    });
+
     roomBookings.forEach(b => {
       const pax = Number(b.paxCount) || 0;
-      if (pax >= 2 && pax <= 3) bracket2to3 += pax;
-      else if (pax >= 4 && pax <= 6) {
+      const cat = getBookingCategory(b, roomBookings);
+      const slotKey = b.timeSlot || b.id;
+      const totalSessionPax = sessionGroupPax[slotKey] || pax;
+
+      if (cat === '2-3') {
+        bracket2to3 += pax;
+      } else if (cat === '4-6') {
         bracket4to6 += pax;
-        if (pax === 5) bracket5 += pax;
-      } else if (pax >= 7) {
+        if (pax === 5 || (totalSessionPax === 5 && (b.totalAmount || 0) > 0)) {
+          bracket5 += (pax === 5 ? pax : totalSessionPax);
+        }
+      } else if (cat === '7+') {
         bracket7plus += pax;
       }
     });
@@ -311,6 +336,9 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
       const kidWording = pax === 1 ? '1 kid' : `${pax} kids`;
       const playerWording = `group of ${pax} players`;
 
+      const isCustomDiscount = b.offerId === 'custom_discount' || Boolean(b.customDiscountReason);
+      const customReason = (b.customDiscountReason || b.offerName || '').trim();
+
       let noteText = '';
 
       if (isLaser) {
@@ -320,6 +348,12 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
           noteText = `Today we had a group of ${pax} who made booking through Website for ${laserDuration} game.`;
         } else if (isActivityKids) {
           noteText = `Today we had a group of ${pax} who made booking through Activity Kids for ${laserDuration} game.`;
+        } else if (isCustomDiscount) {
+          if (customReason.toLowerCase().startsWith('given ') || customReason.toLowerCase().startsWith('today ')) {
+            noteText = `${customReason}${ref && !customReason.includes(ref) ? ` and as per ${ref} reference.` : '.'}`;
+          } else {
+            noteText = `Given ${pct}% discount to ${playerWording} for ${laserDuration} game as ${customReason || 'special discount'}${ref ? ` and as per ${ref} reference.` : '.'}`;
+          }
         } else if (offer.includes('complimentary') || offerId === 'complimentary') {
           noteText = `Given complementary game to ${kidWording} for ${laserDuration} game as they were under 5 years${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('brochure') || offerId === 'cross_promotion_brochure') {
@@ -344,6 +378,12 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
           noteText = `Today we had a group of ${pax} who made booking through Website for ${roomClean}.`;
         } else if (isActivityKids) {
           noteText = `Today we had a group of ${pax} who made booking through Activity Kids for ${roomClean}.`;
+        } else if (isCustomDiscount) {
+          if (customReason.toLowerCase().startsWith('given ') || customReason.toLowerCase().startsWith('today ')) {
+            noteText = `${customReason}${ref && !customReason.includes(ref) ? ` and as per ${ref} reference.` : '.'}`;
+          } else {
+            noteText = `Given ${pct}% discount to ${playerWording} for ${roomClean} as ${customReason || 'special discount'}${ref ? ` and as per ${ref} reference.` : '.'}`;
+          }
         } else if (offer.includes('complimentary') || offerId === 'complimentary') {
           noteText = `Given complementary game to ${kidWording} as they were under 5 years for ${roomClean}${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('brochure') || offerId === 'cross_promotion_brochure') {
@@ -363,9 +403,9 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
         }
       }
 
-      // Populate Customer Name and Mobile Number below discount/online note (except for complimentary games)
-      const isComplimentary = offer.includes('complimentary') || offerId === 'complimentary' || pct === 100;
-      if (!isComplimentary) {
+      // Populate Customer Name and Mobile Number below discount/online note (except for standard complimentary games)
+      const isStandardComplimentary = (offer.includes('complimentary') || offerId === 'complimentary') && !isCustomDiscount;
+      if (!isStandardComplimentary) {
         if (b.customerName) {
           noteText += `\nCustomer Name: ${b.customerName}`;
         }
@@ -747,6 +787,30 @@ Escapetime:${noShowsEscape}
         </div>
       )}
 
+      {/* Screenshot Attachment Rules Banner */}
+      {(khajaBucket.length > 0 || onlineBucket.length > 0) && (
+        <div className="bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white shadow-sm">
+          <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
+            <Camera className="w-5 h-5 text-amber-700 shrink-0" />
+            <span>Closing Screenshot Attachment Rules Active Today:</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {khajaBucket.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 text-amber-950 border border-amber-300 font-black shadow-sm">
+                <Camera className="w-3.5 h-3.5 text-amber-700" />
+                Attach Khaja Sir Approval Screenshot ({khajaBucket.length} {khajaBucket.length === 1 ? 'entry' : 'entries'})
+              </span>
+            )}
+            {onlineBucket.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-100 text-purple-950 border border-purple-300 font-black shadow-sm">
+                <Camera className="w-3.5 h-3.5 text-purple-700" />
+                Attach Online / District Screenshots ({onlineBucket.length} {onlineBucket.length === 1 ? 'entry' : 'entries'})
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Grid: Left Side Aggregations & Discount Builder, Right Side Report */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
@@ -945,6 +1009,14 @@ Escapetime:${noShowsEscape}
                     </div>
                   )}
                 </div>
+
+                {khajaBucket.length > 0 && (
+                  <div className="p-3 bg-amber-100 border border-amber-300 rounded-xl text-xs font-bold text-amber-950 flex items-center gap-2 shadow-sm">
+                    <Camera className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>📸 Mandatory Rule: Attach screenshot of Khaja Sir reference approval in closing message.</span>
+                  </div>
+                )}
+
                 {khajaBucket.length === 0 ? (
                   <p className="text-xs text-slate-400 italic">No notes for Khaja Sir today.</p>
                 ) : (
@@ -1003,6 +1075,13 @@ Escapetime:${noShowsEscape}
                     </button>
                   )}
                 </div>
+
+                {onlineBucket.length > 0 && (
+                  <div className="p-3 bg-purple-100 border border-purple-300 rounded-xl text-xs font-bold text-purple-950 flex items-center gap-2 shadow-sm">
+                    <Camera className="w-4 h-4 text-purple-700 shrink-0" />
+                    <span>📸 Mandatory Rule: Attach booking / payment screenshots (District / Website / Activity Kids) in closing.</span>
+                  </div>
+                )}
                 {onlineBucket.length === 0 ? (
                   <p className="text-xs text-slate-400 italic">No online booking entries today.</p>
                 ) : (
@@ -1034,6 +1113,24 @@ Escapetime:${noShowsEscape}
                 <span>{copiedReport ? 'Copied to WhatsApp' : 'Copy Report'}</span>
               </button>
             </div>
+
+            {/* Screenshot Attachment Reminders in WhatsApp Preview */}
+            {(khajaBucket.length > 0 || onlineBucket.length > 0) && (
+              <div className="space-y-2">
+                {khajaBucket.length > 0 && (
+                  <div className="p-3 bg-amber-500/20 border border-amber-500/40 rounded-xl text-xs text-amber-200 font-bold flex items-center gap-2.5">
+                    <Camera className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>📸 Screenshot Rule: Attach screenshot(s) of Khaja Sir reference approval along with this closing message in WhatsApp!</span>
+                  </div>
+                )}
+                {onlineBucket.length > 0 && (
+                  <div className="p-3 bg-cyan-500/20 border border-cyan-500/40 rounded-xl text-xs text-cyan-200 font-bold flex items-center gap-2.5">
+                    <Camera className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span>📸 Screenshot Rule: Attach booking / payment screenshots (District / Website / Activity Kids) along with this closing report!</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Editable Text Area Preview */}
             <div className="space-y-2">

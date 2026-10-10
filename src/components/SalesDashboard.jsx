@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { VENUES, PAYMENT_METHODS, OFFERS, REFERENCES } from '../config/venueData';
-import { getGameCategoryLabel } from '../utils/pricingEngine';
+import { getGameCategoryLabel, getBookingCategory } from '../utils/pricingEngine';
 import { 
   BarChart3, 
   Calendar as CalendarIcon, 
@@ -34,7 +34,8 @@ export const SalesDashboard = ({
   onSelectBooking, 
   onEditBooking, 
   onDeleteBooking,
-  onResetAllBookings 
+  onResetAllBookings,
+  onUpdateBooking
 }) => {
   const [venueToggle, setVenueToggle] = useState('ALL'); // 'ALL' | 'Escape Time' | 'Laser Shooter'
   const [dateRangeMode, setDateRangeMode] = useState('TODAY'); // 'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'ALL_TIME' | 'CUSTOM' | 'PENDING_ONLY'
@@ -223,7 +224,7 @@ export const SalesDashboard = ({
         `"${b.phone || ''}"`,
         `"${b.email || ''}"`,
         b.paxCount || 0,
-        `"${getGameCategoryLabel(b)}"`,
+        `"${getGameCategoryLabel(b, bookings)}"`,
         `"${(b.offerName || 'None').replace(/"/g, '""')}"`,
         `"${(b.referencePerson || 'N/A').replace(/"/g, '""')}"`,
         b.baseTotal || b.totalAmount || 0,
@@ -285,7 +286,7 @@ export const SalesDashboard = ({
       }
 
       copyText += `${idx + 1}. [${b.timeSlot}] ${b.date} | ${b.venue}\n`;
-      copyText += `   🎮 Game: ${b.gameName} (${getGameCategoryLabel(b)})\n`;
+      copyText += `   🎮 Game: ${b.gameName} (${getGameCategoryLabel(b, bookings)})\n`;
       copyText += `   👤 Customer: ${b.customerName} (${b.phone || 'N/A'})\n`;
       copyText += `   👥 Players: ${b.paxCount}${offerStr}${refStr}\n`;
       copyText += `   💰 Amount: ${paidAmount}${paymentDetailsStr} ${statusStr}\n\n`;
@@ -694,7 +695,7 @@ export const SalesDashboard = ({
                         <div className="text-sm font-extrabold text-slate-900 tracking-wide flex items-center gap-1.5 flex-wrap">
                           <span>{b.gameName}</span>
                           <span className="text-[11px] font-bold text-slate-600 font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                            ({getGameCategoryLabel(b)})
+                            ({getGameCategoryLabel(b, bookings)})
                           </span>
                         </div>
                       </td>
@@ -702,9 +703,32 @@ export const SalesDashboard = ({
                       {/* Players Count & Category */}
                       <td className="px-5 py-4 font-mono font-extrabold text-slate-900 text-xs">
                         <div className="font-extrabold text-slate-900 text-sm">{b.paxCount} Players</div>
-                        <div className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300 mt-1 inline-block">
-                          {getGameCategoryLabel(b)}
-                        </div>
+                        {isEscape ? (
+                          <div className="mt-1.5 flex items-center gap-1">
+                            <select
+                              value={getBookingCategory(b, bookings)}
+                              onChange={(e) => {
+                                const newCat = e.target.value;
+                                if (onUpdateBooking) {
+                                  onUpdateBooking(b.id, {
+                                    categoryOverride: newCat,
+                                    customCategory: newCat === '2-3' ? '2-3 Players Category' : newCat === '4-6' ? '4-6 Players Category' : '7+ Players Category'
+                                  });
+                                }
+                              }}
+                              className="text-[11px] font-bold font-mono px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer shadow-sm transition-all"
+                              title="Click to change Category Bracket at any time"
+                            >
+                              <option value="2-3">2-3 Players</option>
+                              <option value="4-6">4-6 Players</option>
+                              <option value="7+">7+ Players</option>
+                            </select>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] font-bold text-cyan-900 bg-cyan-100 px-2 py-0.5 rounded border border-cyan-300 mt-1 inline-block">
+                            Flat Rate Arena
+                          </div>
+                        )}
                       </td>
 
                       {/* Offer & Reference */}
@@ -727,6 +751,13 @@ export const SalesDashboard = ({
                             <span className="text-slate-700 text-xs sm:text-sm font-extrabold bg-slate-100 px-2.5 py-1 rounded-xl border border-slate-200 inline-block">
                               Standard Rate
                             </span>
+                          )}
+
+                          {b.referencePerson === 'Khaja Sir' && (
+                            <div className="inline-flex items-center gap-1.5 text-xs font-black text-amber-950 bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-300 shadow-sm">
+                              <Camera className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                              <span>Attach Khaja Sir approval screenshot in closing</span>
+                            </div>
                           )}
 
                           {hasSpecialOnlineOrPrepaidPayment && (
