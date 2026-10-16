@@ -46,6 +46,7 @@ export const BookingModal = ({
   const [offerId, setOfferId] = useState('none');
   const [customDiscountReason, setCustomDiscountReason] = useState('');
   const [customDiscountPercentage, setCustomDiscountPercentage] = useState('50');
+  const [customNote, setCustomNote] = useState('');
   const [referencePerson, setReferencePerson] = useState('Nayeem Sir');
   const [categoryOverride, setCategoryOverride] = useState('');
   
@@ -102,7 +103,8 @@ export const BookingModal = ({
       setOfferId(editingBooking.offerId || 'none');
       setCustomDiscountReason(editingBooking.customDiscountReason || (editingBooking.offerId === 'custom_discount' ? editingBooking.offerName : '') || '');
       setCustomDiscountPercentage(editingBooking.discountPercentage !== undefined ? String(editingBooking.discountPercentage) : '50');
-      setReferencePerson(editingBooking.referencePerson || 'Nayeem Sir');
+      setCustomNote(editingBooking.customNote || editingBooking.customDiscountReason || '');
+      setReferencePerson(editingBooking.referencePerson || '');
       setCategoryOverride(editingBooking.categoryOverride || '');
       setIsPendingBooking(editingBooking.status === 'Pending');
       
@@ -128,7 +130,8 @@ export const BookingModal = ({
       setOfferId('none');
       setCustomDiscountReason('');
       setCustomDiscountPercentage('50');
-      setReferencePerson('Nayeem Sir');
+      setCustomNote('');
+      setReferencePerson('');
       setCategoryOverride('');
       setIsPendingBooking(false);
       setPayments({
@@ -270,10 +273,17 @@ export const BookingModal = ({
       rateMode,
       offerId: pricingInfo.offerId,
       offerName: offerId === 'custom_discount' ? (customDiscountReason.trim() || 'Custom Discount') : pricingInfo.offerName,
-      customDiscountReason: offerId === 'custom_discount' ? customDiscountReason.trim() : '',
+      customDiscountReason: offerId === 'custom_discount' ? customDiscountReason.trim() : (customNote.trim() || ''),
+      customNote: (customNote || customDiscountReason || '').trim(),
       discountPercentage: pricingInfo.discountPercentage,
       discountAmount: pricingInfo.discountAmount,
-      referencePerson: pricingInfo.discountPercentage > 0 ? referencePerson : null,
+      referencePerson: (
+        pricingInfo.discountPercentage > 0 && 
+        offerId !== 'none' && 
+        offerId !== 'district_app' && 
+        offerId !== 'website_booking' && 
+        offerId !== 'activity_kids'
+      ) ? (referencePerson || null) : null,
       categoryOverride: categoryOverride || (offerId === 'complimentary' ? '4-6' : null),
       customCategory: (categoryOverride || (offerId === 'complimentary' ? '4-6' : null)) 
         ? ((categoryOverride || (offerId === 'complimentary' ? '4-6' : '')) === '2-3' 
@@ -628,10 +638,29 @@ export const BookingModal = ({
                 </div>
               </div>
             )}
+
+            {/* Custom Note for any selected offer or booking */}
+            {offerId !== 'custom_discount' && (
+              <div className="pt-2 border-t border-slate-200 mt-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider flex items-center justify-between">
+                  <span>Custom Note / Remarks (Optional)</span>
+                  <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                    Auto-populates in Sales & Closing
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 2 players website booking + 1 player cash add-on, special customer note..."
+                  value={customNote}
+                  onChange={(e) => setCustomNote(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:ring-2 focus:ring-amber-100 focus:outline-none font-semibold shadow-sm"
+                />
+              </div>
+            )}
           </div>
 
-          {/* Reference Approval Selector when discount or special offer selected */}
-          {offerId !== 'none' && offerId !== 'district_app' && offerId !== 'website_booking' && offerId !== 'activity_kids' && (
+          {/* Reference Approval Selector when discount or special offer selected — NOT for custom notes */}
+          {(offerId !== 'none' && offerId !== 'district_app' && offerId !== 'website_booking' && offerId !== 'activity_kids') && (
             <div className="p-4 rounded-2xl bg-amber-100/80 border border-amber-300 space-y-2.5 text-xs sm:text-sm">
               <div className="flex items-center justify-between font-bold text-amber-900">
                 <span className="flex items-center gap-1.5">

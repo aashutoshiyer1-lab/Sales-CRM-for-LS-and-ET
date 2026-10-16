@@ -3,9 +3,12 @@ import { VENUES } from './config/venueData';
 import { 
   subscribeBookings, 
   subscribePriceOverrides,
+  subscribeManualDiscounts,
   saveBooking, 
   updateBooking, 
   deleteBooking, 
+  saveManualDiscount,
+  deleteManualDiscount,
   resetAllBookings,
   deduplicateBookings
 } from './config/firebase';
@@ -44,6 +47,16 @@ export function App() {
     }
   });
 
+  // Real-time synced manual discounts for Closing Report
+  const [manualDiscounts, setManualDiscounts] = useState(() => {
+    try {
+      const cached = localStorage.getItem('crm_cached_manual_discounts');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [selectedSlotInfo, setSelectedSlotInfo] = useState({});
   const [editingBooking, setEditingBooking] = useState(null);
@@ -59,16 +72,20 @@ export function App() {
 
   const [, setRateOverrideTick] = useState(0);
 
-  // Subscribe to real-time Firebase sync — bookings & price overrides
+  // Subscribe to real-time Firebase sync — bookings, price overrides & manual discounts
   useEffect(() => {
     const unsubscribeBookings = subscribeBookings((data) => {
       setBookings(data);
+    });
+    const unsubscribeDiscounts = subscribeManualDiscounts((data) => {
+      setManualDiscounts(data);
     });
     subscribePriceOverrides();
     const handleOverrideUpdate = () => setRateOverrideTick(t => t + 1);
     window.addEventListener('crm_price_override_updated', handleOverrideUpdate);
     return () => {
       unsubscribeBookings();
+      unsubscribeDiscounts();
       window.removeEventListener('crm_price_override_updated', handleOverrideUpdate);
     };
   }, []);
@@ -150,6 +167,24 @@ export function App() {
     }
   };
 
+  const handleAddManualDiscount = async (discountData) => {
+    try {
+      setManualDiscounts(prev => [discountData, ...prev.filter(d => d.id !== discountData.id)]);
+      await saveManualDiscount(discountData);
+    } catch (e) {
+      console.error('Failed to save manual discount:', e);
+    }
+  };
+
+  const handleDeleteManualDiscount = async (discountId) => {
+    try {
+      setManualDiscounts(prev => prev.filter(d => d.id !== discountId));
+      await deleteManualDiscount(discountId);
+    } catch (e) {
+      console.error('Failed to delete manual discount:', e);
+    }
+  };
+
   if (!isLoggedIn || currentView === 'login') {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
@@ -205,6 +240,9 @@ export function App() {
         {currentView === 'closing' && (
           <ClosingReportDashboard
             bookings={bookings}
+            manualDiscounts={manualDiscounts}
+            onAddManualDiscount={handleAddManualDiscount}
+            onDeleteManualDiscount={handleDeleteManualDiscount}
             onEditBooking={(b) => handleOpenEditBookingModal(b)}
           />
         )}

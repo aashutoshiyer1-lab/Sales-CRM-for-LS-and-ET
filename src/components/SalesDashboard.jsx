@@ -127,18 +127,33 @@ export const SalesDashboard = ({
     });
   }, [filteredBookings]);
 
-  // Metrics - EXCLUDES Pending games from Total Revenue, Total Players, and Total Games counts!
+  // Metrics - Computes confirmed sales normally, and computes pending sales values when in PENDING_ONLY mode!
   const metrics = useMemo(() => {
-    const confirmedBookings = filteredBookings.filter(b => b.status !== 'Pending');
-    const pendingBookings = filteredBookings.filter(b => b.status === 'Pending');
+    const isPendingMode = dateRangeMode === 'PENDING_ONLY';
 
-    const totalRevenue = confirmedBookings.reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
-    // Exclude Pending Games from Total Players metric
-    const totalPlayers = confirmedBookings.reduce((sum, b) => sum + (Number(b.paxCount) || 0), 0);
-    // Exclude Complimentary & Pending Games from Total Games metric count
-    const totalGamesCount = confirmedBookings.filter(b => b.offerId !== 'complimentary').length;
-    const pendingGamesCount = pendingBookings.length;
-    const totalDiscounts = confirmedBookings.reduce((sum, b) => sum + (Number(b.discountAmount) || 0), 0);
+    const confirmedBookings = filteredBookings.filter(b => b.status !== 'Pending');
+    const pendingInFilter = filteredBookings.filter(b => b.status === 'Pending');
+
+    // Total pending bookings in whole scope
+    const allPendingInVenue = bookings.filter(b => {
+      if (venueToggle !== 'ALL' && b.venue !== venueToggle) return false;
+      return b.status === 'Pending';
+    });
+    const pendingGamesCount = allPendingInVenue.length;
+
+    // Expected revenue and players from pending games
+    const pendingRevenue = pendingInFilter.reduce((sum, b) => sum + (Number(b.totalAmount) || Number(b.baseTotal) || 0), 0);
+    const pendingPlayers = pendingInFilter.reduce((sum, b) => sum + (Number(b.paxCount) || 0), 0);
+
+    const confirmedRevenue = confirmedBookings.reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
+    const confirmedPlayers = confirmedBookings.reduce((sum, b) => sum + (Number(b.paxCount) || 0), 0);
+    const confirmedGamesCount = confirmedBookings.filter(b => b.offerId !== 'complimentary').length;
+
+    // When in PENDING_ONLY mode, show the pending games' sales values instead of 0!
+    const totalRevenue = isPendingMode ? pendingRevenue : confirmedRevenue;
+    const totalPlayers = isPendingMode ? pendingPlayers : confirmedPlayers;
+    const totalGamesCount = isPendingMode ? pendingInFilter.length : confirmedGamesCount;
+    const totalDiscounts = (isPendingMode ? pendingInFilter : confirmedBookings).reduce((sum, b) => sum + (Number(b.discountAmount) || 0), 0);
 
     const paymentBreakdown = {
       Cash: 0,
@@ -149,7 +164,8 @@ export const SalesDashboard = ({
       'Activity Kids': 0,
     };
 
-    confirmedBookings.forEach((b) => {
+    const bookingsForPayments = isPendingMode ? pendingInFilter : confirmedBookings;
+    bookingsForPayments.forEach((b) => {
       if (b.payments) {
         Object.entries(b.payments).forEach(([method, amt]) => {
           const key = (method === 'UPI/New Pay') ? 'UPI-New Pay' 
@@ -170,14 +186,19 @@ export const SalesDashboard = ({
       pendingGamesCount,
       totalDiscounts,
       paymentBreakdown,
+      isPendingMode,
     };
-  }, [filteredBookings]);
+  }, [filteredBookings, bookings, venueToggle, dateRangeMode]);
 
-  // Handle clicking "Pending Games" metric card -> Filters & auto-scrolls to table
+  // Handle clicking "Pending Games" metric card -> Toggles filter & auto-scrolls to table
   const handlePendingGamesClick = () => {
-    setDateRangeMode('PENDING_ONLY');
-    if (tableRef.current) {
-      tableRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (dateRangeMode === 'PENDING_ONLY') {
+      setDateRangeMode('TODAY');
+    } else {
+      setDateRangeMode('PENDING_ONLY');
+      if (tableRef.current) {
+        tableRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
   };
 
@@ -274,6 +295,7 @@ export const SalesDashboard = ({
       const paidAmount = isPending ? 'Pending' : `₹${Number(b.totalAmount || 0).toLocaleString()}`;
       const offerStr = (b.offerId && b.offerId !== 'none') ? ` (Offer: ${b.offerName})` : '';
       const refStr = b.referencePerson ? ` [Ref: ${b.referencePerson}]` : '';
+      const noteStr = (b.customNote || (b.offerId !== 'custom_discount' && b.customDiscountReason)) ? ` [Note: ${b.customNote || b.customDiscountReason}]` : '';
 
       let paymentDetailsStr = '';
       if (!isPending && b.payments) {
@@ -288,7 +310,7 @@ export const SalesDashboard = ({
       copyText += `${idx + 1}. [${b.timeSlot}] ${b.date} | ${b.venue}\n`;
       copyText += `   🎮 Game: ${b.gameName} (${getGameCategoryLabel(b, bookings)})\n`;
       copyText += `   👤 Customer: ${b.customerName} (${b.phone || 'N/A'})\n`;
-      copyText += `   👥 Players: ${b.paxCount}${offerStr}${refStr}\n`;
+      copyText += `   👥 Players: ${b.paxCount}${offerStr}${refStr}${noteStr}\n`;
       copyText += `   💰 Amount: ${paidAmount}${paymentDetailsStr} ${statusStr}\n\n`;
     });
 
@@ -489,70 +511,138 @@ export const SalesDashboard = ({
 
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div className="p-6 rounded-3xl bg-white border-2 border-emerald-200 shadow-lg relative overflow-hidden">
+        <div className={`p-6 rounded-3xl shadow-lg relative overflow-hidden transition-all ${
+          metrics.isPendingMode 
+            ? 'bg-amber-50/50 border-2 border-amber-300' 
+            : 'bg-white border-2 border-emerald-200'
+        }`}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold text-emerald-700 uppercase tracking-wider">Total Revenue</span>
-            <div className="p-2.5 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200">
-              <TrendingUp className="w-5 h-5" />
+            <span className={`text-xs font-extrabold uppercase tracking-wider ${
+              metrics.isPendingMode ? 'text-amber-800' : 'text-emerald-700'
+            }`}>
+              {metrics.isPendingMode ? 'Pending Revenue (To Collect)' : 'Total Revenue'}
+            </span>
+            <div className={`p-2.5 rounded-2xl border ${
+              metrics.isPendingMode 
+                ? 'bg-amber-100 text-amber-700 border-amber-300' 
+                : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+            }`}>
+              {metrics.isPendingMode ? <Clock3 className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
             </div>
           </div>
-          <div className="text-3xl font-black text-slate-900 font-mono mt-3">
+          <div className={`text-3xl font-black font-mono mt-3 ${
+            metrics.isPendingMode ? 'text-amber-950' : 'text-slate-900'
+          }`}>
             ₹{metrics.totalRevenue.toLocaleString()}
           </div>
-          <div className="text-[11px] text-slate-600 mt-1 flex items-center gap-1 font-mono font-semibold">
-            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Confirmed paid collections</span>
+          <div className={`text-[11px] mt-1 flex items-center gap-1 font-mono font-semibold ${
+            metrics.isPendingMode ? 'text-amber-800' : 'text-slate-600'
+          }`}>
+            {metrics.isPendingMode ? (
+              <span>Uncollected revenue from pending games</span>
+            ) : (
+              <>
+                <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Confirmed paid collections</span>
+              </>
+            )}
           </div>
         </div>
 
-        <div className="p-6 rounded-3xl bg-white border-2 border-cyan-200 shadow-lg relative overflow-hidden">
+        <div className={`p-6 rounded-3xl shadow-lg relative overflow-hidden transition-all ${
+          metrics.isPendingMode 
+            ? 'bg-amber-50/50 border-2 border-amber-300' 
+            : 'bg-white border-2 border-cyan-200'
+        }`}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold text-cyan-700 uppercase tracking-wider">Total Players</span>
-            <div className="p-2.5 rounded-2xl bg-cyan-50 text-cyan-600 border border-cyan-200">
+            <span className={`text-xs font-extrabold uppercase tracking-wider ${
+              metrics.isPendingMode ? 'text-amber-800' : 'text-cyan-700'
+            }`}>
+              {metrics.isPendingMode ? 'Pending Players' : 'Total Players'}
+            </span>
+            <div className={`p-2.5 rounded-2xl border ${
+              metrics.isPendingMode 
+                ? 'bg-amber-100 text-amber-700 border-amber-300' 
+                : 'bg-cyan-50 text-cyan-600 border border-cyan-200'
+            }`}>
               <Users className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-3xl font-black text-slate-900 font-mono mt-3">
+          <div className={`text-3xl font-black font-mono mt-3 ${
+            metrics.isPendingMode ? 'text-amber-950' : 'text-slate-900'
+          }`}>
             {metrics.totalPlayers.toLocaleString()} <span className="text-sm font-bold text-slate-500">Players</span>
           </div>
-          <div className="text-[11px] text-slate-600 mt-1 font-mono font-semibold">
-            Confirmed player turnout
+          <div className={`text-[11px] mt-1 font-mono font-semibold ${
+            metrics.isPendingMode ? 'text-amber-800' : 'text-slate-600'
+          }`}>
+            {metrics.isPendingMode ? 'Players awaiting payment confirmation' : 'Confirmed player turnout'}
           </div>
         </div>
 
-        <div className="p-6 rounded-3xl bg-white border-2 border-amber-200 shadow-lg relative overflow-hidden">
+        <div className={`p-6 rounded-3xl shadow-lg relative overflow-hidden transition-all ${
+          metrics.isPendingMode 
+            ? 'bg-amber-50/50 border-2 border-amber-300' 
+            : 'bg-white border-2 border-amber-200'
+        }`}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold text-amber-700 uppercase tracking-wider">Total Games</span>
-            <div className="p-2.5 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200">
+            <span className={`text-xs font-extrabold uppercase tracking-wider ${
+              metrics.isPendingMode ? 'text-amber-800' : 'text-amber-700'
+            }`}>
+              {metrics.isPendingMode ? 'Pending Games Count' : 'Total Games'}
+            </span>
+            <div className={`p-2.5 rounded-2xl border ${
+              metrics.isPendingMode 
+                ? 'bg-amber-100 text-amber-700 border-amber-300' 
+                : 'bg-amber-50 text-amber-600 border border-amber-200'
+            }`}>
               <Receipt className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-3xl font-black text-slate-900 font-mono mt-3">
+          <div className={`text-3xl font-black font-mono mt-3 ${
+            metrics.isPendingMode ? 'text-amber-950' : 'text-slate-900'
+          }`}>
             {metrics.totalGamesCount}
           </div>
-          <div className="text-[11px] text-slate-600 mt-1 font-mono font-semibold">
-            Confirmed game entries
+          <div className={`text-[11px] mt-1 font-mono font-semibold ${
+            metrics.isPendingMode ? 'text-amber-800' : 'text-slate-600'
+          }`}>
+            {metrics.isPendingMode ? 'Games awaiting payment & confirmation' : 'Confirmed game entries'}
           </div>
         </div>
 
         {/* Dedicated Pending Games Metric Card with Click-to-Focus */}
         <div 
           onClick={handlePendingGamesClick}
-          className="p-6 rounded-3xl bg-amber-50/70 border-2 border-amber-300 shadow-lg relative overflow-hidden cursor-pointer hover:bg-amber-100/80 transition-all hover:scale-[1.02]"
-          title="Click to view and edit pending games"
+          className={`p-6 rounded-3xl shadow-lg relative overflow-hidden cursor-pointer transition-all hover:scale-[1.02] ${
+            metrics.isPendingMode
+              ? 'bg-amber-500 text-white border-2 border-amber-600 ring-4 ring-amber-200'
+              : 'bg-amber-50/70 border-2 border-amber-300 hover:bg-amber-100/80'
+          }`}
+          title={metrics.isPendingMode ? "Click to clear filter and show Today's sales" : "Click to view and edit pending games"}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold text-amber-800 uppercase tracking-wider">Pending Games</span>
-            <div className="p-2.5 rounded-2xl bg-amber-100 text-amber-700 border border-amber-300">
+            <span className={`text-xs font-extrabold uppercase tracking-wider ${
+              metrics.isPendingMode ? 'text-amber-100' : 'text-amber-800'
+            }`}>
+              {metrics.isPendingMode ? 'Filter Active' : 'Pending Games'}
+            </span>
+            <div className={`p-2.5 rounded-2xl border ${
+              metrics.isPendingMode ? 'bg-amber-600 text-white border-amber-400' : 'bg-amber-100 text-amber-700 border-amber-300'
+            }`}>
               <Clock3 className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-3xl font-black text-amber-900 font-mono mt-3">
+          <div className={`text-3xl font-black font-mono mt-3 ${
+            metrics.isPendingMode ? 'text-white' : 'text-amber-900'
+          }`}>
             {metrics.pendingGamesCount}
           </div>
-          <div className="text-[11px] text-amber-800 mt-1 font-mono font-bold flex items-center justify-between">
-            <span>Payment to be collected</span>
-            <span className="text-[10px] underline">Click to view →</span>
+          <div className={`text-[11px] mt-1 font-mono font-bold flex items-center justify-between ${
+            metrics.isPendingMode ? 'text-amber-100' : 'text-amber-800'
+          }`}>
+            <span>{metrics.isPendingMode ? 'Showing Pending Only' : 'Payment to be collected'}</span>
+            <span className="text-[10px] underline">{metrics.isPendingMode ? 'Click to show All →' : 'Click to view →'}</span>
           </div>
         </div>
       </div>
@@ -753,6 +843,13 @@ export const SalesDashboard = ({
                             </span>
                           )}
 
+                          {Boolean(b.customNote || (b.offerId !== 'custom_discount' && b.customDiscountReason)) && (
+                            <div className="text-xs font-semibold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-300 flex items-start gap-1 break-words">
+                              <span className="font-bold text-amber-800 shrink-0">Note:</span>
+                              <span>{b.customNote || b.customDiscountReason}</span>
+                            </div>
+                          )}
+
                           {b.referencePerson === 'Khaja Sir' && (
                             <div className="inline-flex items-center gap-1.5 text-xs font-black text-amber-950 bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-300 shadow-sm">
                               <Camera className="w-3.5 h-3.5 text-amber-700 shrink-0" />
@@ -770,16 +867,27 @@ export const SalesDashboard = ({
                       </td>
 
                       {/* Total Paid / Status */}
+                      {/* Total Paid / Status */}
                       <td className="px-5 py-4 font-mono">
                         {isPending ? (
-                          <button
-                            onClick={() => onEditBooking(b)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-amber-200 text-amber-950 border border-amber-400 hover:bg-amber-300 transition-all cursor-pointer shadow-sm"
-                            title="Click to enter payment and confirm game"
-                          >
-                            <Clock3 className="w-3.5 h-3.5 text-amber-800" />
-                            PAYMENT PENDING
-                          </button>
+                          <div className="space-y-1.5">
+                            <div>
+                              <div className="font-black text-amber-950 text-base sm:text-lg tracking-tight">
+                                ₹{(Number(b.totalAmount) || Number(b.baseTotal) || 0).toLocaleString()}
+                              </div>
+                              <span className="inline-block text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 mt-0.5">
+                                Awaiting Payment
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => onEditBooking(b)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-amber-300 hover:bg-amber-400 text-amber-950 border border-amber-500 transition-all cursor-pointer shadow-sm"
+                              title="Click to enter payment and confirm game"
+                            >
+                              <Clock3 className="w-3.5 h-3.5 text-amber-900" />
+                              PAYMENT PENDING
+                            </button>
+                          </div>
                         ) : (
                           <div>
                             <div className="font-black text-slate-950 text-base sm:text-lg tracking-tight">
@@ -794,24 +902,31 @@ export const SalesDashboard = ({
 
                       {/* Split Breakdown */}
                       <td className="px-5 py-4">
-                        <div className="flex flex-wrap gap-x-4 gap-y-1.5 max-w-md font-mono">
-                          {Object.entries(b.payments || {}).map(([method, amt]) => {
-                            if (!amt || Number(amt) <= 0) return null;
-                            const label = (method === 'UPI-New Pay' || method === 'UPI/New Pay') ? 'UPI' 
-                              : (method === 'Razorpay (Website Bookings)' || method === 'Razorpay( website bookings)') ? 'Razorpay' 
-                              : (method === 'Activity Kids' || method === 'Activity kids') ? 'Activity Kids' 
-                              : method;
-                            return (
-                              <div 
-                                key={method} 
-                                className="inline-flex items-center gap-1.5 text-base sm:text-lg font-black"
-                              >
-                                <span className="text-slate-950 font-black uppercase tracking-tight">{label}:</span>
-                                <span className="text-emerald-700 font-black font-mono">₹{Number(amt).toLocaleString()}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        {isPending && (!b.payments || Object.values(b.payments).reduce((a, c) => a + (Number(c) || 0), 0) === 0) ? (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold font-mono">
+                            <Clock3 className="w-3.5 h-3.5 text-amber-700" />
+                            <span>Payment not yet recorded</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-x-4 gap-y-1.5 max-w-md font-mono">
+                            {Object.entries(b.payments || {}).map(([method, amt]) => {
+                              if (!amt || Number(amt) <= 0) return null;
+                              const label = (method === 'UPI-New Pay' || method === 'UPI/New Pay') ? 'UPI' 
+                                : (method === 'Razorpay (Website Bookings)' || method === 'Razorpay( website bookings)') ? 'Razorpay' 
+                                : (method === 'Activity Kids' || method === 'Activity kids') ? 'Activity Kids' 
+                                : method;
+                              return (
+                                <div 
+                                  key={method} 
+                                  className="inline-flex items-center gap-1.5 text-base sm:text-lg font-black"
+                                >
+                                  <span className="text-slate-950 font-black uppercase tracking-tight">{label}:</span>
+                                  <span className="text-emerald-700 font-black font-mono">₹{Number(amt).toLocaleString()}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </td>
 
                       {/* Actions */}

@@ -7,5 +7,17 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true
+  },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/database'],
+          icons: ['lucide-react']
+        }
+      }
+    }
   }
 })

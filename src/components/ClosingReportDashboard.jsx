@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { 
   FileText, 
   Copy, 
@@ -24,6 +24,7 @@ import {
 import { VENUES } from '../config/venueData';
 import { getBookingCategory, getGameCategoryLabel } from '../utils/pricingEngine';
 import { DiscountEntryModal, formatSingleDiscountNote } from './DiscountEntryModal';
+import { subscribeClosingReport, saveClosingReport } from '../config/firebase';
 
 export const getInitialShiftDate = () => {
   const now = new Date();
@@ -39,6 +40,31 @@ export const formatDateDDMMYYYY = (dateString) => {
   return `${day}-${month}-${year}`;
 };
 
+export const getCachedClosingReport = (date) => {
+  if (!date) return null;
+  try {
+    const raw = localStorage.getItem(`crm_closing_report_${date}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const formatCustomNoteGrammar = (raw) => {
+  if (!raw) return '';
+  let cleaned = String(raw).trim();
+  // Strip common prefixes like "Note:", "note -", "Note -", "Custom Note:", etc.
+  cleaned = cleaned.replace(/^(note\s*:\s*|note\s*-\s*|custom\s*note\s*:\s*|custom\s*note\s*-\s*|custom\s*reason\s*:\s*|note\s+)/i, '').trim();
+  if (!cleaned) return '';
+  // Capitalize first letter
+  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  // Ensure closing punctuation if missing
+  if (!/[.!?]$/.test(cleaned)) {
+    cleaned += '.';
+  }
+  return cleaned;
+};
+
 const PREDEFINED_STAFF_LIST = [
   'Aashutosh',
   'CHINNA BABU',
@@ -46,19 +72,34 @@ const PREDEFINED_STAFF_LIST = [
   'Nageena'
 ];
 
-export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
-  const [shiftDate, setShiftDate] = useState(getInitialShiftDate());
-  const [selectedStaffOption, setSelectedStaffOption] = useState('Aashutosh');
-  const [customStaffName, setCustomStaffName] = useState('');
+export const ClosingReportDashboard = ({ 
+  bookings = [], 
+  manualDiscounts = [], 
+  onAddManualDiscount, 
+  onDeleteManualDiscount, 
+  onEditBooking 
+}) => {
+  const initialDate = useMemo(() => getInitialShiftDate(), []);
+  const [shiftDate, setShiftDate] = useState(initialDate);
+
+  const initialCached = useMemo(() => getCachedClosingReport(initialDate), [initialDate]);
+
+  const [selectedStaffOption, setSelectedStaffOption] = useState(() => initialCached?.selectedStaffOption || 'Aashutosh');
+  const [customStaffName, setCustomStaffName] = useState(() => initialCached?.customStaffName || '');
   
   const staffName = selectedStaffOption === 'custom' ? customStaffName : selectedStaffOption;
 
   const [copiedReport, setCopiedReport] = useState(false);
   const [copiedBucket, setCopiedBucket] = useState(null);
 
-  // Manual discount entries created directly in Closing Report
-  const [manualDiscounts, setManualDiscounts] = useState([]);
+  // Manual discount entries passed from Firebase real-time sync
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+  const [editingDiscountEntry, setEditingDiscountEntry] = useState(null);
+
+  // Shift specific manual discounts
+  const shiftManualDiscounts = useMemo(() => {
+    return (manualDiscounts || []).filter(d => !d.date || d.date === shiftDate);
+  }, [manualDiscounts, shiftDate]);
 
   // Print Modals State
   const [printLaserModalOpen, setPrintLaserModalOpen] = useState(false);
@@ -69,26 +110,125 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
   const [isLaserPrintEdited, setIsLaserPrintEdited] = useState(false);
   const [isEscapePrintEdited, setIsEscapePrintEdited] = useState(false);
 
-  // Manual inputs for excess amounts & custom notes
-  const [excessAmounts, setExcessAmounts] = useState({
+  // Manual inputs for excess amounts & custom notes — cached locally and deep-synced via RTDB
+  const [excessAmounts, setExcessAmounts] = useState(() => ({
     laser: '',
     lab: '',
     lockedIn: '',
     sherlock: '',
-    spy: ''
-  });
+    spy: '',
+    ...(initialCached?.excessAmounts || {})
+  }));
 
-  const [notes, setNotes] = useState({
+  const [notes, setNotes] = useState(() => ({
     laser: '',
     lab: '',
     lockedIn: '',
     sherlock: '',
-    spy: ''
+    spy: '',
+    ...(initialCached?.notes || {})
+  }));
+
+  const [staffGamesCount, setStaffGamesCount] = useState(() => initialCached?.staffGamesCount || 0);
+  const [customReportText, setCustomReportText] = useState(() => initialCached?.customReportText || '');
+  const [isManualEditMode, setIsManualEditMode] = useState(() => Boolean(initialCached?.isManualEditMode));
+
+  // Ref to hold current state snapshot for debounced RTDB persistence
+  const closingDataRef = useRef({
+    excessAmounts,
+    notes,
+    staffGamesCount,
+    selectedStaffOption,
+    customStaffName,
+    isManualEditMode,
+    customReportText
   });
 
-  const [staffGamesCount, setStaffGamesCount] = useState(0);
-  const [customReportText, setCustomReportText] = useState('');
-  const [isManualEditMode, setIsManualEditMode] = useState(false);
+  useEffect(() => {
+    closingDataRef.current = {
+      excessAmounts,
+      notes,
+      staffGamesCount,
+      selectedStaffOption,
+      customStaffName,
+      isManualEditMode,
+      customReportText
+    };
+  }, [excessAmounts, notes, staffGamesCount, selectedStaffOption, customStaffName, isManualEditMode, customReportText]);
+
+  const saveTimeoutRef = useRef(null);
+
+  // Deep Real-time Persistence: writes to localStorage instantly (0ms) + debounces RTDB save (300ms)
+  const persistUpdates = useCallback((updates) => {
+    const nextData = {
+      ...closingDataRef.current,
+      ...updates
+    };
+    closingDataRef.current = nextData;
+
+    try {
+      localStorage.setItem(`crm_closing_report_${shiftDate}`, JSON.stringify(nextData));
+    } catch (e) {}
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      saveClosingReport(shiftDate, nextData);
+    }, 300);
+  }, [shiftDate]);
+
+  // Real-time synchronization with Firebase RTDB + instant local storage load on shiftDate change
+  useEffect(() => {
+    const cached = getCachedClosingReport(shiftDate);
+    if (cached) {
+      if (cached.excessAmounts) setExcessAmounts(prev => ({ ...prev, ...cached.excessAmounts }));
+      if (cached.notes) setNotes(prev => ({ ...prev, ...cached.notes }));
+      if (cached.staffGamesCount !== undefined) setStaffGamesCount(cached.staffGamesCount);
+      if (cached.selectedStaffOption) setSelectedStaffOption(cached.selectedStaffOption);
+      if (cached.customStaffName !== undefined) setCustomStaffName(cached.customStaffName);
+      if (cached.isManualEditMode !== undefined) setIsManualEditMode(cached.isManualEditMode);
+      if (cached.customReportText !== undefined) setCustomReportText(cached.customReportText);
+    } else {
+      setExcessAmounts({ laser: '', lab: '', lockedIn: '', sherlock: '', spy: '' });
+      setNotes({ laser: '', lab: '', lockedIn: '', sherlock: '', spy: '' });
+      setStaffGamesCount(0);
+      setIsManualEditMode(false);
+      setCustomReportText('');
+    }
+
+    const unsubscribe = subscribeClosingReport(shiftDate, (remoteData) => {
+      if (!remoteData) return;
+      if (remoteData.excessAmounts) {
+        setExcessAmounts(prev => ({ ...prev, ...remoteData.excessAmounts }));
+      }
+      if (remoteData.notes) {
+        setNotes(prev => ({ ...prev, ...remoteData.notes }));
+      }
+      if (remoteData.staffGamesCount !== undefined) {
+        setStaffGamesCount(remoteData.staffGamesCount);
+      }
+      if (remoteData.selectedStaffOption) {
+        setSelectedStaffOption(remoteData.selectedStaffOption);
+      }
+      if (remoteData.customStaffName !== undefined) {
+        setCustomStaffName(remoteData.customStaffName);
+      }
+      if (remoteData.isManualEditMode !== undefined) {
+        setIsManualEditMode(remoteData.isManualEditMode);
+      }
+      if (remoteData.customReportText !== undefined) {
+        setCustomReportText(remoteData.customReportText);
+      }
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [shiftDate]);
 
   // Filter bookings for the selected shift date
   const shiftBookings = useMemo(() => {
@@ -99,7 +239,7 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
     return bookings.filter(b => b.date === shiftDate && (b.status === 'No Show' || b.status === 'Cancelled'));
   }, [bookings, shiftDate]);
 
-  // --- PAYMENT METHOD BREAKDOWN ---
+  // --- COMBINED SHIFT PAYMENT METHOD BREAKDOWN ---
   const paymentBreakdown = useMemo(() => {
     const totals = {
       Cash: 0,
@@ -113,7 +253,14 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
     shiftBookings.forEach(b => {
       if (b.status === 'Confirmed' && b.payments) {
         Object.keys(totals).forEach(method => {
-          totals[method] += Number(b.payments[method]) || 0;
+          let val = Number(b.payments[method]) || 0;
+          if (!val && method === 'Razorpay (Website Bookings)') {
+            val = Number(b.payments['Razorpay( website bookings)']) || Number(b.payments['Razorpay']) || 0;
+          }
+          if (!val && method === 'Activity Kids') {
+            val = Number(b.payments['Activity kids']) || 0;
+          }
+          totals[method] += val;
         });
       }
     });
@@ -126,10 +273,40 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
     return shiftBookings.filter(b => b.venue === VENUES.LASER_SHOOTER && b.status === 'Confirmed');
   }, [shiftBookings]);
 
-  // Helper: Only pure complimentary games (kids under 5/6) use complimentary game session logic.
+  // --- PURE LASER SHOOTER PAYMENT BREAKDOWN ---
+  const laserPaymentBreakdown = useMemo(() => {
+    const totals = {
+      Cash: 0,
+      Card: 0,
+      'UPI-New Pay': 0,
+      'Prepaid by District': 0,
+      'Razorpay (Website Bookings)': 0,
+      'Activity Kids': 0
+    };
+
+    laserBookings.forEach(b => {
+      if (b.payments) {
+        Object.keys(totals).forEach(method => {
+          let val = Number(b.payments[method]) || 0;
+          if (!val && method === 'Razorpay (Website Bookings)') {
+            val = Number(b.payments['Razorpay( website bookings)']) || Number(b.payments['Razorpay']) || 0;
+          }
+          if (!val && method === 'Activity Kids') {
+            val = Number(b.payments['Activity kids']) || 0;
+          }
+          totals[method] += val;
+        });
+      }
+    });
+
+    return totals;
+  }, [laserBookings]);
+
+  // Helper: Only pure complimentary games (kids under 5/6 with 0 payment) use complimentary game session logic.
   // Bookings with custom notes/discounts and customer details count normally as sessions!
   const isPureComplimentary = (b) => {
     if (!b) return false;
+    if (Number(b.totalAmount) > 0) return false;
     if (b.offerId === 'custom_discount' || Boolean(b.customDiscountReason)) return false;
     const offer = (b.offerName || '').toLowerCase();
     return b.offerId === 'complimentary' || offer.includes('complimentary');
@@ -177,6 +354,35 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
   const escapeBookings = useMemo(() => {
     return shiftBookings.filter(b => b.venue === VENUES.ESCAPE_TIME && b.status === 'Confirmed');
   }, [shiftBookings]);
+
+  // --- PURE ESCAPE TIME PAYMENT BREAKDOWN ---
+  const escapePaymentBreakdown = useMemo(() => {
+    const totals = {
+      Cash: 0,
+      Card: 0,
+      'UPI-New Pay': 0,
+      'Prepaid by District': 0,
+      'Razorpay (Website Bookings)': 0,
+      'Activity Kids': 0
+    };
+
+    escapeBookings.forEach(b => {
+      if (b.payments) {
+        Object.keys(totals).forEach(method => {
+          let val = Number(b.payments[method]) || 0;
+          if (!val && method === 'Razorpay (Website Bookings)') {
+            val = Number(b.payments['Razorpay( website bookings)']) || Number(b.payments['Razorpay']) || 0;
+          }
+          if (!val && method === 'Activity Kids') {
+            val = Number(b.payments['Activity kids']) || 0;
+          }
+          totals[method] += val;
+        });
+      }
+    });
+
+    return totals;
+  }, [escapeBookings]);
 
   const getRoomStats = (roomNamePattern) => {
     const roomBookings = escapeBookings.filter(b => 
@@ -269,10 +475,13 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
       spy: []
     };
 
-    // 1. Process Bookings with Discounts or Online Payments (District / Razorpay / Activity Kids)
+    // 1. Process Bookings with Discounts, Custom Notes, or Online Payments (District / Razorpay / Activity Kids)
     const relevantBookings = shiftBookings.filter(b => 
       b.status === 'Confirmed' && (
         (b.offerId && b.offerId !== 'none') ||
+        Boolean(b.referencePerson) ||
+        Boolean(b.customNote && b.customNote.trim()) ||
+        Boolean(b.customDiscountReason && b.customDiscountReason.trim()) ||
         (b.payments && (
           Number(b.payments['Prepaid by District']) > 0 ||
           Number(b.payments['Razorpay (Website Bookings)']) > 0 ||
@@ -305,7 +514,6 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
       const isActivityKids = isActivityKidsOffer || isActivityKidsPay;
       const isOnline = isDistrict || isRazorpay || isActivityKids;
       
-      const requiresRef = !isOnline;
       const ref = b.referencePerson || '';
       const isLaser = b.venue === VENUES.LASER_SHOOTER;
       
@@ -336,108 +544,121 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
       const kidWording = pax === 1 ? '1 kid' : `${pax} kids`;
       const playerWording = `group of ${pax} players`;
 
-      const isCustomDiscount = b.offerId === 'custom_discount' || Boolean(b.customDiscountReason);
-      const customReason = (b.customDiscountReason || b.offerName || '').trim();
+      const customNoteText = (b.customNote || b.customDiscountReason || '').trim();
+      const isCustomDiscount = b.offerId === 'custom_discount' || Boolean(b.customDiscountReason) || Boolean(customNoteText);
+      const customReason = customNoteText || (b.offerName || '').trim();
+
+      const requiresRef = !isOnline && pct > 0;
 
       let noteText = '';
+      let baseSentence = '';
 
       if (isLaser) {
         if (isDistrict) {
-          noteText = `Today we had a group of ${pax} who made booking through District for ${laserDuration} game.`;
+          baseSentence = `Today we had a group of ${pax} who made booking through District for ${laserDuration} game.`;
         } else if (isRazorpay) {
-          noteText = `Today we had a group of ${pax} who made booking through Website for ${laserDuration} game.`;
+          baseSentence = `Today we had a group of ${pax} who made booking through Website for ${laserDuration} game.`;
         } else if (isActivityKids) {
-          noteText = `Today we had a group of ${pax} who made booking through Activity Kids for ${laserDuration} game.`;
-        } else if (isCustomDiscount) {
-          if (customReason.toLowerCase().startsWith('given ') || customReason.toLowerCase().startsWith('today ')) {
-            noteText = `${customReason}${ref && !customReason.includes(ref) ? ` and as per ${ref} reference.` : '.'}`;
-          } else {
-            noteText = `Given ${pct}% discount to ${playerWording} for ${laserDuration} game as ${customReason || 'special discount'}${ref ? ` and as per ${ref} reference.` : '.'}`;
-          }
+          baseSentence = `Today we had a group of ${pax} who made booking through Activity Kids for ${laserDuration} game.`;
         } else if (offer.includes('complimentary') || offerId === 'complimentary') {
-          noteText = `Given complementary game to ${kidWording} for ${laserDuration} game as they were under 5 years${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given complementary game to ${kidWording} for ${laserDuration} game as they were under 5 years${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('brochure') || offerId === 'cross_promotion_brochure') {
-          noteText = `Given 30% discount to ${playerWording} for ${laserDuration} game as they had cross promotion brochure${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 30}% discount to ${playerWording} for ${laserDuration} game as they had cross promotion brochure${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('cross promotion') || offerId === 'cross_promotion') {
-          noteText = `Given 30% discount to ${playerWording} for ${laserDuration} game as they had cross promotion coupon${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 30}% discount to ${playerWording} for ${laserDuration} game as they had cross promotion coupon${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('second') || offerId === 'second_game') {
-          noteText = `Given ${pct || 10}% discount to ${playerWording} for ${laserDuration} game as it was their 2nd game the same day${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 20}% discount to ${playerWording} for ${laserDuration} game as it was their 2nd game the same day${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('birthday') || offerId === 'birthday_package') {
-          noteText = `Given ${pct || 20}% discount to ${playerWording} for ${laserDuration} game as it was a birthday package${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 15}% discount to ${playerWording} for ${laserDuration} game as it was a birthday package${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('corporate') || offerId === 'corporate_package') {
-          noteText = `Given ${pct || 15}% discount to ${playerWording} for ${laserDuration} game as it was a corporate package${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 15}% discount to ${playerWording} for ${laserDuration} game as it was a corporate package${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('high price') || offerId === 'high_price_retention') {
-          noteText = `Given ${pct}% discount to ${playerWording} for ${laserDuration} game as they were going back due to high prices${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 10}% discount to ${playerWording} for ${laserDuration} game as they were going back due to high prices${ref ? ` and as per ${ref} reference.` : '.'}`;
+        } else if (pct > 0) {
+          baseSentence = `Given ${pct}% discount to ${playerWording} for ${laserDuration} game as ${b.offerName || 'special discount'}${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else {
-          noteText = `Given ${pct}% discount to ${playerWording} for ${laserDuration} game as they were ${b.offerName || 'discounted'}${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Today we had a ${playerWording} for ${laserDuration} game.`;
         }
       } else {
         if (isDistrict) {
-          noteText = `Today we had a group of ${pax} who made booking through District for ${roomClean}.`;
+          baseSentence = `Today we had a group of ${pax} who made booking through District for ${roomClean}.`;
         } else if (isRazorpay) {
-          noteText = `Today we had a group of ${pax} who made booking through Website for ${roomClean}.`;
+          baseSentence = `Today we had a group of ${pax} who made booking through Website for ${roomClean}.`;
         } else if (isActivityKids) {
-          noteText = `Today we had a group of ${pax} who made booking through Activity Kids for ${roomClean}.`;
-        } else if (isCustomDiscount) {
-          if (customReason.toLowerCase().startsWith('given ') || customReason.toLowerCase().startsWith('today ')) {
-            noteText = `${customReason}${ref && !customReason.includes(ref) ? ` and as per ${ref} reference.` : '.'}`;
-          } else {
-            noteText = `Given ${pct}% discount to ${playerWording} for ${roomClean} as ${customReason || 'special discount'}${ref ? ` and as per ${ref} reference.` : '.'}`;
-          }
+          baseSentence = `Today we had a group of ${pax} who made booking through Activity Kids for ${roomClean}.`;
         } else if (offer.includes('complimentary') || offerId === 'complimentary') {
-          noteText = `Given complementary game to ${kidWording} as they were under 5 years for ${roomClean}${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given complementary game to ${kidWording} as they were under 5 years for ${roomClean}${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('brochure') || offerId === 'cross_promotion_brochure') {
-          noteText = `Given 30% discount to ${playerWording} for ${roomClean} as they had cross promotion brochure${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 30}% discount to ${playerWording} for ${roomClean} as they had cross promotion brochure${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('cross promotion') || offerId === 'cross_promotion') {
-          noteText = `Given 30% discount to ${playerWording} for ${roomClean} as they had cross promotion coupon${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 30}% discount to ${playerWording} for ${roomClean} as they had cross promotion coupon${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('second') || offerId === 'second_game') {
-          noteText = `Given ${pct || 20}% discount to ${playerWording} for ${roomClean} as it was their 2nd game the same day${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 20}% discount to ${playerWording} for ${roomClean} as it was their 2nd game the same day${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('birthday') || offerId === 'birthday_package') {
-          noteText = `Given ${pct || 20}% discount to ${playerWording} for ${roomClean} as it was a birthday package${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 15}% discount to ${playerWording} for ${roomClean} as it was a birthday package${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('corporate') || offerId === 'corporate_package') {
-          noteText = `Given ${pct || 15}% discount to ${playerWording} for ${roomClean} as it was a corporate package${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 15}% discount to ${playerWording} for ${roomClean} as it was a corporate package${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('high price') || offerId === 'high_price_retention') {
-          noteText = `Given ${pct}% discount to ${playerWording} for ${roomClean} as they were going back due to high prices${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct || 10}% discount to ${playerWording} for ${roomClean} as they were going back due to high prices${ref ? ` and as per ${ref} reference.` : '.'}`;
+        } else if (pct > 0) {
+          baseSentence = `Given ${pct}% discount to ${playerWording} for ${roomClean} as ${b.offerName || 'special discount'}${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else {
-          noteText = `Given ${pct}% discount to ${playerWording} for ${roomClean} as they were ${b.offerName || 'discounted'}${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Today we had a ${playerWording} for ${roomClean}.`;
         }
       }
 
-      // Populate Customer Name and Mobile Number below discount/online note (except for standard complimentary games)
-      const isStandardComplimentary = (offer.includes('complimentary') || offerId === 'complimentary') && !isCustomDiscount;
-      if (!isStandardComplimentary) {
-        if (b.customerName) {
-          noteText += `\nCustomer Name: ${b.customerName}`;
+      noteText = baseSentence;
+
+      // Custom note on next line without "Note:", with proper grammar (reference does NOT populate for custom notes)
+      if (customNoteText) {
+        const formattedCustom = formatCustomNoteGrammar(customNoteText);
+        if (formattedCustom) {
+          noteText += `\n${formattedCustom}`;
         }
-        if (b.phone) {
-          noteText += `\nMobile Number: ${b.phone}`;
+      }
+
+      // Populate Customer Name and Mobile Number directly below custom note
+      const isStandardComplimentary = (offer.includes('complimentary') || offerId === 'complimentary') && !customNoteText;
+      if (!isStandardComplimentary) {
+        if (b.customerName && b.customerName.trim()) {
+          noteText += `\nCustomer Name: ${b.customerName.trim()}`;
+        }
+        if (b.phone && b.phone.trim()) {
+          noteText += `\nMobile Number: ${b.phone.trim()}`;
         }
       }
 
       if (requiresRef && !ref) {
         warnings.push({
           booking: b,
-          message: `Missing manager reference for ${b.customerName} (${b.gameName}, ${pct}% off)`
+          message: `Missing manager reference for ${b.customerName || 'Booking'} (${b.gameName}, ${pct}% off)`
         });
-      } else {
-        if (ref === 'Khaja Sir') khajaNotes.push(noteText);
-        else if (ref === 'Nayeem Sir') nayeemNotes.push(noteText);
-        else onlineNotes.push(noteText);
+      }
 
-        if (isLaser) {
-          roomNotesMap.laser.push(noteText);
-        } else {
-          const gName = (b.gameName || '').toLowerCase();
-          if (gName.includes('professor')) roomNotesMap.lab.push(noteText);
-          else if (gName.includes('locked')) roomNotesMap.lockedIn.push(noteText);
-          else if (gName.includes('sherlock')) roomNotesMap.sherlock.push(noteText);
-          else if (gName.includes('spy')) roomNotesMap.spy.push(noteText);
-        }
+      // Manager buckets
+      if (ref === 'Khaja Sir' || ref.toLowerCase().includes('khaja')) {
+        khajaNotes.push(noteText);
+      } else if (ref === 'Nayeem Sir' || ref.toLowerCase().includes('nayeem')) {
+        nayeemNotes.push(noteText);
+      } else if (isOnline) {
+        onlineNotes.push(noteText);
+      }
+
+      // ALWAYS add to roomNotesMap so it appears in closing message!
+      if (isLaser) {
+        roomNotesMap.laser.push(noteText);
+      } else {
+        const gName = (b.gameName || '').toLowerCase();
+        if (gName.includes('professor') || gName.includes('lab')) roomNotesMap.lab.push(noteText);
+        else if (gName.includes('locked')) roomNotesMap.lockedIn.push(noteText);
+        else if (gName.includes('sherlock')) roomNotesMap.sherlock.push(noteText);
+        else if (gName.includes('spy')) roomNotesMap.spy.push(noteText);
+        else roomNotesMap.lab.push(noteText);
       }
     });
 
-    // 2. Process Manual Discount Entries
-    manualDiscounts.forEach(entry => {
+    // 2. Process Manual Discount Entries (synced in real-time)
+    shiftManualDiscounts.forEach(entry => {
       const res = formatSingleDiscountNote(entry);
       if (res.missingRef) {
         warnings.push({
@@ -446,18 +667,23 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
         });
       } else if (res.isApproved && res.notes) {
         res.notes.forEach(n => {
-          if (entry.reference === 'Khaja Sir') khajaNotes.push(n.text);
-          else if (entry.reference === 'Nayeem Sir') nayeemNotes.push(n.text);
-          else onlineNotes.push(n.text);
+          if (entry.reference === 'Khaja Sir' || (entry.reference || '').toLowerCase().includes('khaja')) {
+            khajaNotes.push(n.text);
+          } else if (entry.reference === 'Nayeem Sir' || (entry.reference || '').toLowerCase().includes('nayeem')) {
+            nayeemNotes.push(n.text);
+          } else {
+            onlineNotes.push(n.text);
+          }
 
           if (n.isLaser) {
             roomNotesMap.laser.push(n.text);
           } else {
             const roomName = (n.roomOrDuration || '').toLowerCase();
-            if (roomName.includes('professor')) roomNotesMap.lab.push(n.text);
+            if (roomName.includes('professor') || roomName.includes('lab')) roomNotesMap.lab.push(n.text);
             else if (roomName.includes('locked')) roomNotesMap.lockedIn.push(n.text);
             else if (roomName.includes('sherlock')) roomNotesMap.sherlock.push(n.text);
             else if (roomName.includes('spy')) roomNotesMap.spy.push(n.text);
+            else roomNotesMap.lab.push(n.text);
           }
         });
       }
@@ -470,7 +696,7 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
       missingRefWarnings: warnings,
       allDiscountNotes: roomNotesMap
     };
-  }, [shiftBookings, manualDiscounts]);
+  }, [shiftBookings, shiftManualDiscounts]);
 
   // Derived Auto Laser Print Text
   const autoLaserPrintText = useMemo(() => {
@@ -502,11 +728,16 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
 
     const formatNotesBlock = (customNote, autoNotes) => {
       const combined = [];
-      if (customNote && customNote.trim()) combined.push(`Note: ${customNote.trim()}`);
+      if (customNote && customNote.trim()) {
+        combined.push(customNote.trim());
+      }
       autoNotes.forEach((n, idx) => {
         combined.push(`${idx + 1}. ${n}`);
       });
-      return combined.length > 0 ? combined.join('\n\n') : 'Note: None';
+      if (combined.length === 0) {
+        return 'Note: ';
+      }
+      return `Note: \n${combined.join('\n\n')}`;
     };
 
     const laserNotesText = formatNotesBlock(notes.laser, allDiscountNotes.laser);
@@ -515,11 +746,11 @@ export const ClosingReportDashboard = ({ bookings = [], onEditBooking }) => {
     const sherlockNotesText = formatNotesBlock(notes.sherlock, allDiscountNotes.sherlock);
     const spyNotesText = formatNotesBlock(notes.spy, allDiscountNotes.spy);
 
-    const laserExcessText = excessAmounts.laser ? `\nExcess:-${excessAmounts.laser}/-` : '';
-    const labExcessText = excessAmounts.lab ? `${excessAmounts.lab}/-` : '';
-    const lockedInExcessText = excessAmounts.lockedIn ? `${excessAmounts.lockedIn}/-` : '';
-    const sherlockExcessText = excessAmounts.sherlock ? `${excessAmounts.sherlock}/-` : '';
-    const spyExcessText = excessAmounts.spy ? `${excessAmounts.spy}/-` : '';
+    const laserExcessVal = excessAmounts.laser ? `${excessAmounts.laser}/-` : '';
+    const labExcessVal = excessAmounts.lab ? `${excessAmounts.lab}/-` : '0/-';
+    const lockedInExcessVal = excessAmounts.lockedIn ? `${excessAmounts.lockedIn}/-` : '0/-';
+    const sherlockExcessVal = excessAmounts.sherlock ? `${excessAmounts.sherlock}/-` : '0/-';
+    const spyExcessVal = excessAmounts.spy ? `${excessAmounts.spy}/-` : '0/-';
 
     return `Assalamualaikum
 ${formattedDate}
@@ -532,7 +763,8 @@ Total Games: ${laserTotalGames}
 30 mins games: ${laser30Min}
 Staff game: ${staffGamesCount}
 Complementary game:${derivedComplementaryCountLaser}
-Total sale:- *${laserTotalSale.toLocaleString()}/-${laserExcessText}
+Total sale:- *${laserTotalSale.toLocaleString()}/-
+Excess:-${laserExcessVal}
 ${laserNotesText}
 
 Fog machine - off
@@ -543,7 +775,7 @@ No of sessions:-${labStats.sessions}
 Total games :-${labStats.games}
 Total sale:-${labStats.sale.toLocaleString()}/-
 Complementary game:${labStats.complCount}
-Excess :-${labExcessText}
+Excess :-${labExcessVal}
 ${labNotesText}
 
     *LOCKED IN*
@@ -551,7 +783,7 @@ No of sessions:-${lockedInStats.sessions}
 Total games :-${lockedInStats.games}
 Total sale:-${lockedInStats.sale.toLocaleString()}/-
 Complementary game:${lockedInStats.complCount}
-Excess :-${lockedInExcessText}
+Excess :-${lockedInExcessVal}
 ${lockedInNotesText}
 
 *Sherlock*
@@ -559,7 +791,7 @@ No of sessions:-${sherlockStats.sessions}
 Total games :-${sherlockStats.games}
 Total sale:-${sherlockStats.sale.toLocaleString()}/-
 Complementary game:${sherlockStats.complCount}
-Excess :-${sherlockExcessText}
+Excess :-${sherlockExcessVal}
 ${sherlockNotesText}
 
  *Spy Agent*
@@ -567,7 +799,7 @@ No of sessions:-${spyStats.sessions}
 Total games :-${spyStats.games}
 Total sale:-${spyStats.sale.toLocaleString()}/-
 Complementary game:${spyStats.complCount}
-Excess :-${spyExcessText}
+Excess :-${spyExcessVal}
 ${spyNotesText}
 
 Number of no shows ${totalNoShows}
@@ -575,7 +807,7 @@ Lasershooter ${noShowsLaser}
 Escapetime:${noShowsEscape}
 
 *Overall sale*:-${overallSale.toLocaleString()}/-
-     ${staffName.trim() || 'Admin'}`;
+     ${staffName.trim() || 'Aashutosh'}`;
   }, [
     shiftDate,
     laserSessions,
@@ -681,7 +913,11 @@ Escapetime:${noShowsEscape}
             <span className="text-xs text-slate-400 font-semibold">Staff:</span>
             <select
               value={selectedStaffOption}
-              onChange={(e) => setSelectedStaffOption(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedStaffOption(val);
+                persistUpdates({ selectedStaffOption: val });
+              }}
               className="bg-slate-900 text-white text-xs font-bold focus:outline-none border border-slate-700 rounded px-2 py-0.5 cursor-pointer"
             >
               {PREDEFINED_STAFF_LIST.map(st => (
@@ -694,7 +930,11 @@ Escapetime:${noShowsEscape}
               <input
                 type="text"
                 value={customStaffName}
-                onChange={(e) => setCustomStaffName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomStaffName(val);
+                  persistUpdates({ customStaffName: val });
+                }}
                 placeholder="Enter custom staff name..."
                 className="bg-transparent text-white text-xs font-bold focus:outline-none w-36 border-b border-cyan-400 px-1"
               />
@@ -848,17 +1088,30 @@ Escapetime:${noShowsEscape}
                   type="number"
                   min="0"
                   value={staffGamesCount}
-                  onChange={(e) => setStaffGamesCount(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  onChange={(e) => {
+                    const count = Math.max(0, parseInt(e.target.value, 10) || 0);
+                    setStaffGamesCount(count);
+                    persistUpdates({ staffGamesCount: count });
+                  }}
                   className="w-full bg-white border border-cyan-300 rounded text-sm font-bold font-mono px-2 py-0.5 mt-1 focus:outline-none focus:ring-1 focus:ring-cyan-500"
                 />
               </div>
             </div>
 
-            {/* Game Durations */}
-            <div className="grid grid-cols-3 gap-2 text-xs font-semibold text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200">
-              <div>10m (Combat): <span className="font-mono font-bold text-slate-900">{laser10Min}</span></div>
-              <div>20m (Battle): <span className="font-mono font-bold text-slate-900">{laser20Min}</span></div>
-              <div>30m (War): <span className="font-mono font-bold text-slate-900">{laser30Min}</span></div>
+            {/* Game Durations - Large, Clear, Prominent */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-center">
+                <span className="text-xs font-extrabold text-slate-700 block">10 mins (Combat)</span>
+                <span className="text-xl font-black text-slate-950 font-mono block mt-1">{laser10Min}</span>
+              </div>
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-center">
+                <span className="text-xs font-extrabold text-slate-700 block">20 mins (Battle)</span>
+                <span className="text-xl font-black text-slate-950 font-mono block mt-1">{laser20Min}</span>
+              </div>
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-center">
+                <span className="text-xs font-extrabold text-slate-700 block">30 mins (War)</span>
+                <span className="text-xl font-black text-slate-950 font-mono block mt-1">{laser30Min}</span>
+              </div>
             </div>
 
             {/* Excess & Note Input */}
@@ -869,8 +1122,15 @@ Escapetime:${noShowsEscape}
                   type="text"
                   placeholder="e.g. 100"
                   value={excessAmounts.laser}
-                  onChange={(e) => setExcessAmounts(prev => ({ ...prev, laser: e.target.value }))}
-                  className="w-full text-xs p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setExcessAmounts(prev => {
+                      const next = { ...prev, laser: val };
+                      persistUpdates({ excessAmounts: next });
+                      return next;
+                    });
+                  }}
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500 font-semibold text-slate-900"
                 />
               </div>
               <div>
@@ -879,9 +1139,40 @@ Escapetime:${noShowsEscape}
                   type="text"
                   placeholder="e.g. Fog machine off"
                   value={notes.laser}
-                  onChange={(e) => setNotes(prev => ({ ...prev, laser: e.target.value }))}
-                  className="w-full text-xs p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNotes(prev => {
+                      const next = { ...prev, laser: val };
+                      persistUpdates({ notes: next });
+                      return next;
+                    });
+                  }}
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500 font-semibold text-slate-900"
                 />
+              </div>
+            </div>
+
+            {/* Pure Laser Shooter Payment Breakdown */}
+            <div className="pt-3 border-t border-cyan-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-cyan-950 tracking-wide uppercase">
+                  Laser Shooter Payment Breakdown
+                </span>
+                <span className="text-xs font-mono font-black text-cyan-800">
+                  Total: ₹{Object.values(laserPaymentBreakdown).reduce((a, b) => a + b, 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                {Object.entries(laserPaymentBreakdown).map(([method, amount]) => (
+                  <div key={method} className="bg-cyan-50/80 p-2.5 rounded-xl border border-cyan-200 shadow-2xs">
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block truncate">
+                      {method}
+                    </span>
+                    <span className="text-sm font-black text-cyan-950 font-mono block mt-0.5">
+                      ₹{amount.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -906,46 +1197,95 @@ Escapetime:${noShowsEscape}
                 { name: "Spy Agents", key: 'spy', stats: spyStats, bg: 'bg-cyan-50/40', border: 'border-cyan-100' }
               ].map(room => (
                 <div key={room.key} className={`p-4 rounded-xl border ${room.border} ${room.bg} space-y-3`}>
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-900">
-                    <span>{room.name}</span>
-                    <span className="font-mono text-slate-700">₹{room.stats.sale.toLocaleString()}</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-black text-slate-950">{room.name}</span>
+                    <span className="font-mono text-slate-950 font-black text-sm">₹{room.stats.sale.toLocaleString()}</span>
                   </div>
 
-                  {/* Main Metrics */}
-                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                    <div className="bg-white p-2 rounded-lg border border-slate-200">
-                      <span className="text-[10px] text-slate-500 font-bold block">Sessions</span>
-                      <span className="font-mono font-extrabold text-slate-800">{room.stats.sessions}</span>
+                  {/* Main Metrics - Clearer, Bolder Typography */}
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[11px] text-slate-600 font-extrabold block uppercase tracking-wider">Sessions</span>
+                      <span className="font-mono font-black text-lg sm:text-xl text-slate-950 block mt-0.5">{room.stats.sessions}</span>
                     </div>
-                    <div className="bg-white p-2 rounded-lg border border-slate-200">
-                      <span className="text-[10px] text-slate-500 font-bold block">Games</span>
-                      <span className="font-mono font-extrabold text-slate-800">{room.stats.games}</span>
+                    <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[11px] text-slate-600 font-extrabold block uppercase tracking-wider">Games</span>
+                      <span className="font-mono font-black text-lg sm:text-xl text-slate-950 block mt-0.5">{room.stats.games}</span>
                     </div>
-                    <div className="bg-white p-2 rounded-lg border border-slate-200">
-                      <span className="text-[10px] text-slate-500 font-bold block">Compliment</span>
-                      <span className="font-mono font-extrabold text-slate-800">{room.stats.complCount}</span>
+                    <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[11px] text-slate-600 font-extrabold block uppercase tracking-wider">Compliment</span>
+                      <span className="font-mono font-black text-lg sm:text-xl text-slate-950 block mt-0.5">{room.stats.complCount}</span>
                     </div>
-                    <div className="bg-white p-2 rounded-lg border border-slate-200">
-                      <span className="text-[10px] text-slate-500 font-bold block">Excess (₹)</span>
+                    <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[11px] text-slate-600 font-extrabold block uppercase tracking-wider">Excess (₹)</span>
                       <input
                         type="text"
                         placeholder="0"
-                        value={excessAmounts[room.key]}
-                        onChange={(e) => setExcessAmounts(prev => ({ ...prev, [room.key]: e.target.value }))}
-                        className="w-full text-center text-xs font-mono font-bold border-none focus:outline-none"
+                        value={excessAmounts[room.key] || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setExcessAmounts(prev => {
+                            const next = { ...prev, [room.key]: val };
+                            persistUpdates({ excessAmounts: next });
+                            return next;
+                          });
+                        }}
+                        className="w-full text-center text-sm sm:text-base font-mono font-black text-slate-950 border-b border-slate-300 focus:outline-none focus:border-red-500 mt-0.5"
                       />
                     </div>
                   </div>
 
-                  {/* Group Brackets Breakdown */}
-                  <div className="grid grid-cols-4 gap-1.5 text-[11px] bg-white p-2 rounded-lg border border-slate-200 text-slate-600 font-medium">
-                    <div>2-3 Players: <span className="font-mono font-bold text-slate-900">{room.stats.bracket2to3}</span></div>
-                    <div>4-6 Players: <span className="font-mono font-bold text-slate-900">{room.stats.bracket4to6}</span></div>
-                    <div>7+ Players: <span className="font-mono font-bold text-slate-900">{room.stats.bracket7plus}</span></div>
-                    <div>5 Players: <span className="font-mono font-bold text-indigo-700">{room.stats.bracket5}</span></div>
+                  {/* Group Brackets Breakdown - Clearer & More Visible */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white/90 p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <div className="text-xs font-bold text-slate-700">2-3 Players: <span className="font-mono font-black text-slate-950 text-sm ml-1">{room.stats.bracket2to3}</span></div>
+                    <div className="text-xs font-bold text-slate-700">4-6 Players: <span className="font-mono font-black text-slate-950 text-sm ml-1">{room.stats.bracket4to6}</span></div>
+                    <div className="text-xs font-bold text-slate-700">7+ Players: <span className="font-mono font-black text-slate-950 text-sm ml-1">{room.stats.bracket7plus}</span></div>
+                    <div className="text-xs font-bold text-indigo-900">5 Players: <span className="font-mono font-black text-indigo-950 text-sm ml-1">{room.stats.bracket5}</span></div>
+                  </div>
+
+                  {/* Room Custom Note Input */}
+                  <div className="pt-1">
+                    <input
+                      type="text"
+                      placeholder={`Custom note for ${room.name} (optional)...`}
+                      value={notes[room.key] || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNotes(prev => {
+                          const next = { ...prev, [room.key]: val };
+                          persistUpdates({ notes: next });
+                          return next;
+                        });
+                      }}
+                      className="w-full text-xs p-2 rounded-xl border border-slate-200 bg-white/90 focus:bg-white focus:outline-none focus:ring-1 focus:ring-red-400 font-medium text-slate-900 placeholder:text-slate-400"
+                    />
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Pure Escape Time Payment Breakdown */}
+            <div className="pt-3 border-t border-red-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-red-950 tracking-wide uppercase">
+                  Escape Time Payment Breakdown
+                </span>
+                <span className="text-xs font-mono font-black text-red-800">
+                  Total: ₹{Object.values(escapePaymentBreakdown).reduce((a, b) => a + b, 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                {Object.entries(escapePaymentBreakdown).map(([method, amount]) => (
+                  <div key={method} className="bg-red-50/80 p-2.5 rounded-xl border border-red-200 shadow-2xs">
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block truncate">
+                      {method}
+                    </span>
+                    <span className="text-sm font-black text-red-950 font-mono block mt-0.5">
+                      ₹{amount.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -957,7 +1297,10 @@ Escapetime:${noShowsEscape}
                 <h2 className="text-base font-extrabold text-slate-900 tracking-tight">Manager Approval Note Buckets</h2>
               </div>
               <button
-                onClick={() => setIsDiscountModalOpen(true)}
+                onClick={() => {
+                  setEditingDiscountEntry(null);
+                  setIsDiscountModalOpen(true);
+                }}
                 className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1 transition-all shadow-sm"
               >
                 <Plus className="w-4 h-4" />
@@ -966,21 +1309,57 @@ Escapetime:${noShowsEscape}
             </div>
 
             {/* List Manual Entries if any */}
-            {manualDiscounts.length > 0 && (
-              <div className="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 space-y-2">
-                <span className="text-xs font-bold text-indigo-900 block">Manual Discount Entries ({manualDiscounts.length})</span>
-                <div className="space-y-1 text-xs">
-                  {manualDiscounts.map(d => (
-                    <div key={d.id} className="flex items-center justify-between bg-white p-2 rounded-lg border border-indigo-200">
-                      <span className="text-slate-800 font-medium">
-                        {d.reason} ({d.percentage}%) - Ref: {d.reference || 'None'}
-                      </span>
-                      <button
-                        onClick={() => setManualDiscounts(manualDiscounts.filter(x => x.id !== d.id))}
-                        className="text-red-500 hover:text-red-700 p-1"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+            {shiftManualDiscounts.length > 0 && (
+              <div className="bg-indigo-50/50 p-3.5 rounded-xl border border-indigo-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold text-indigo-950 block">
+                    Manual Discount Entries ({shiftManualDiscounts.length})
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-medium">Click pencil to edit any entry</span>
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  {shiftManualDiscounts.map(d => (
+                    <div key={d.id} className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-indigo-200 shadow-2xs gap-2">
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-slate-900 font-extrabold capitalize">
+                            {d.reason}
+                          </span>
+                          <span className="text-[11px] font-mono font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                            {d.percentage === 'complementary' ? 'Complimentary' : d.percentage === 'custom' ? `${d.customPct}%` : `${d.percentage}%`}
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-600">
+                            Ref: <strong className="text-slate-900">{d.reference || 'None'}</strong>
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-500">
+                            Pax: {d.groupSizeVal || 1}
+                          </span>
+                        </div>
+                        {d.customerName && (
+                          <div className="text-[11px] text-slate-500">
+                            Customer: <span className="font-semibold text-slate-700">{d.customerName}</span> {d.phone && `(${d.phone})`}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => {
+                            setEditingDiscountEntry(d);
+                            setIsDiscountModalOpen(true);
+                          }}
+                          className="p-1.5 rounded-lg text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 transition-colors"
+                          title="Edit discount entry"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => onDeleteManualDiscount && onDeleteManualDiscount(d.id)}
+                          className="p-1.5 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors"
+                          title="Delete discount entry"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1138,10 +1517,13 @@ Escapetime:${noShowsEscape}
                 <span>Formatted Output Preview</span>
                 <button
                   onClick={() => {
-                    if (!isManualEditMode) {
+                    const nextMode = !isManualEditMode;
+                    const nextText = nextMode ? (customReportText || generatedWhatsAppReport) : customReportText;
+                    setIsManualEditMode(nextMode);
+                    if (nextMode && !customReportText) {
                       setCustomReportText(generatedWhatsAppReport);
                     }
-                    setIsManualEditMode(!isManualEditMode);
+                    persistUpdates({ isManualEditMode: nextMode, customReportText: nextText });
                   }}
                   className="text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
                 >
@@ -1153,7 +1535,11 @@ Escapetime:${noShowsEscape}
               <textarea
                 readOnly={!isManualEditMode}
                 value={activeReportText}
-                onChange={(e) => setCustomReportText(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomReportText(val);
+                  persistUpdates({ customReportText: val });
+                }}
                 rows={22}
                 className="w-full bg-slate-950 text-emerald-300 font-mono text-xs p-4 rounded-xl border border-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed resize-none shadow-inner"
               />
@@ -1173,8 +1559,19 @@ Escapetime:${noShowsEscape}
       {/* Discount Entry Modal */}
       <DiscountEntryModal
         isOpen={isDiscountModalOpen}
-        onClose={() => setIsDiscountModalOpen(false)}
-        onAddDiscount={(entry) => setManualDiscounts(prev => [...prev, entry])}
+        initialEntry={editingDiscountEntry}
+        onClose={() => {
+          setIsDiscountModalOpen(false);
+          setEditingDiscountEntry(null);
+        }}
+        onAddDiscount={(entry) => {
+          onAddManualDiscount && onAddManualDiscount({ 
+            ...entry, 
+            id: editingDiscountEntry?.id || entry.id,
+            date: editingDiscountEntry?.date || shiftDate 
+          });
+          setEditingDiscountEntry(null);
+        }}
       />
 
       {/* Laser Shooter Print Modal */}

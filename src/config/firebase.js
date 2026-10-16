@@ -308,4 +308,199 @@ export const savePriceOverrideFirebase = async (dateString, mode) => {
   window.dispatchEvent(new CustomEvent('crm_price_override_updated', { detail: { date: formattedDate, mode } }));
 };
 
+// ─── Manual Discounts Realtime Sync ──────────────────────────────
+export const subscribeManualDiscounts = (callback) => {
+  let sdkListenerActive = false;
+
+  // 1. Immediately emit cached manual discounts for 0ms instant display
+  try {
+    const cached = localStorage.getItem('crm_cached_manual_discounts');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) {
+        callback(parsed);
+      }
+    }
+  } catch (e) {}
+
+  const emitData = (discounts) => {
+    try {
+      localStorage.setItem('crm_cached_manual_discounts', JSON.stringify(discounts));
+    } catch (e) {}
+    callback(discounts);
+  };
+
+  // 2. Real-time Firebase SDK listener
+  try {
+    const discountsRef = ref(rtdb, 'manual_discounts');
+    onValue(discountsRef, (snapshot) => {
+      sdkListenerActive = true;
+      const discounts = snapshot.exists() ? dataToArray(snapshot.val()) : [];
+      emitData(discounts);
+    }, (error) => {
+      console.warn('[Firebase SDK] Manual discounts listener error:', error.message);
+      sdkListenerActive = false;
+    });
+  } catch (e) {
+    console.warn('[Firebase SDK] Manual discounts setup failed:', e.message);
+  }
+
+  // 3. REST fallback
+  const poll = async () => {
+    if (sdkListenerActive) return;
+    try {
+      const data = await restGet('manual_discounts');
+      const discounts = dataToArray(data);
+      if (!sdkListenerActive) {
+        emitData(discounts);
+      }
+    } catch (e) {
+      console.warn('[Firebase REST] Manual discounts poll failed:', e.message);
+    }
+  };
+
+  const pollTimer = setTimeout(poll, 1500);
+  const pollInterval = setInterval(() => {
+    if (!sdkListenerActive) poll();
+  }, 10000);
+
+  return () => {
+    clearTimeout(pollTimer);
+    clearInterval(pollInterval);
+  };
+};
+
+export const saveManualDiscount = async (discountData) => {
+  const discountId = discountData.id || `disc-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+  const payload = {
+    ...discountData,
+    id: discountId,
+    createdAt: discountData.createdAt || new Date().toISOString()
+  };
+
+  try {
+    const cached = localStorage.getItem('crm_cached_manual_discounts');
+    const list = cached ? JSON.parse(cached) : [];
+    localStorage.setItem('crm_cached_manual_discounts', JSON.stringify([payload, ...list.filter(d => d.id !== discountId)]));
+  } catch (e) {}
+
+  try {
+    await set(ref(rtdb, `manual_discounts/${discountId}`), payload);
+    console.log(`[Firebase SDK] Saved manual discount ${discountId}`);
+  } catch (sdkErr) {
+    console.warn(`[Firebase SDK] Save manual discount failed, using REST:`, sdkErr.message);
+    await restPut(`manual_discounts/${discountId}`, payload);
+  }
+
+  return payload;
+};
+
+export const deleteManualDiscount = async (discountId) => {
+  try {
+    const cached = localStorage.getItem('crm_cached_manual_discounts');
+    if (cached) {
+      const list = JSON.parse(cached);
+      localStorage.setItem('crm_cached_manual_discounts', JSON.stringify(list.filter(d => d.id !== discountId)));
+    }
+  } catch (e) {}
+
+  try {
+    await remove(ref(rtdb, `manual_discounts/${discountId}`));
+    console.log(`[Firebase SDK] Deleted manual discount ${discountId}`);
+  } catch (sdkErr) {
+    console.warn(`[Firebase SDK] Delete manual discount failed, using REST:`, sdkErr.message);
+    await restDelete(`manual_discounts/${discountId}`);
+  }
+};
+
+// ─── Closing Report Realtime Sync ─────────────────────────────────
+export const subscribeClosingReport = (dateString, callback) => {
+  if (!dateString) return () => {};
+  const formattedDate = normalizeDateString(dateString);
+  let sdkListenerActive = false;
+
+  // 1. Immediately emit cached closing report for 0ms instant display
+  try {
+    const cached = localStorage.getItem(`crm_closing_report_${formattedDate}`);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && typeof parsed === 'object') {
+        callback(parsed);
+      }
+    }
+  } catch (e) {}
+
+  const emitData = (reportData) => {
+    try {
+      localStorage.setItem(`crm_closing_report_${formattedDate}`, JSON.stringify(reportData));
+    } catch (e) {}
+    callback(reportData);
+  };
+
+  // 2. Real-time Firebase SDK listener
+  try {
+    const reportRef = ref(rtdb, `closing_reports/${formattedDate}`);
+    const unsubscribe = onValue(reportRef, (snapshot) => {
+      sdkListenerActive = true;
+      if (snapshot.exists()) {
+        emitData(snapshot.val());
+      }
+    }, (error) => {
+      console.warn('[Firebase SDK] Closing report listener error:', error.message);
+      sdkListenerActive = false;
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  } catch (e) {
+    console.warn('[Firebase SDK] Closing report setup failed:', e.message);
+  }
+
+  // 3. REST fallback
+  const poll = async () => {
+    if (sdkListenerActive) return;
+    try {
+      const data = await restGet(`closing_reports/${formattedDate}`);
+      if (data && typeof data === 'object') {
+        emitData(data);
+      }
+    } catch (e) {
+      console.warn('[Firebase REST] Closing report poll failed:', e.message);
+    }
+  };
+
+  const pollTimer = setTimeout(poll, 1500);
+  return () => clearTimeout(pollTimer);
+};
+
+export const saveClosingReport = async (dateString, reportData) => {
+  if (!dateString) return;
+  const formattedDate = normalizeDateString(dateString);
+  const payload = {
+    ...reportData,
+    date: formattedDate,
+    updatedAt: new Date().toISOString()
+  };
+
+  try {
+    localStorage.setItem(`crm_closing_report_${formattedDate}`, JSON.stringify(payload));
+  } catch (e) {}
+
+  try {
+    await set(ref(rtdb, `closing_reports/${formattedDate}`), payload);
+    console.log(`[Firebase SDK] Saved closing report for ${formattedDate}`);
+  } catch (sdkErr) {
+    console.warn(`[Firebase SDK] Save closing report failed, using REST:`, sdkErr.message);
+    try {
+      await restPut(`closing_reports/${formattedDate}`, payload);
+    } catch (restErr) {
+      console.error(`[Firebase REST] Save closing report failed:`, restErr);
+    }
+  }
+
+  return payload;
+};
+
 export { rtdb };
+
