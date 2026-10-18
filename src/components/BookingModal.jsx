@@ -49,6 +49,7 @@ export const BookingModal = ({
   const [customNote, setCustomNote] = useState('');
   const [referencePerson, setReferencePerson] = useState('Nayeem Sir');
   const [categoryOverride, setCategoryOverride] = useState('');
+  const [showComplimentaryCategoryConfirm, setShowComplimentaryCategoryConfirm] = useState(false);
   
   const [isPendingBooking, setIsPendingBooking] = useState(false);
 
@@ -104,9 +105,10 @@ export const BookingModal = ({
       setCustomDiscountReason(editingBooking.customDiscountReason || (editingBooking.offerId === 'custom_discount' ? editingBooking.offerName : '') || '');
       setCustomDiscountPercentage(editingBooking.discountPercentage !== undefined ? String(editingBooking.discountPercentage) : '50');
       setCustomNote(editingBooking.customNote || editingBooking.customDiscountReason || '');
-      setReferencePerson(editingBooking.referencePerson || '');
+      setReferencePerson(editingBooking.referencePerson || 'Nayeem Sir');
       setCategoryOverride(editingBooking.categoryOverride || '');
       setIsPendingBooking(editingBooking.status === 'Pending');
+      setShowComplimentaryCategoryConfirm(false);
       
       const prevPay = editingBooking.payments || {};
       setPayments({
@@ -131,9 +133,10 @@ export const BookingModal = ({
       setCustomDiscountReason('');
       setCustomDiscountPercentage('50');
       setCustomNote('');
-      setReferencePerson('');
+      setReferencePerson('Nayeem Sir');
       setCategoryOverride('');
       setIsPendingBooking(false);
+      setShowComplimentaryCategoryConfirm(false);
       setPayments({
         Cash: '',
         Card: '',
@@ -184,10 +187,27 @@ export const BookingModal = ({
   const isComplimentary = offerId === 'complimentary';
   const finalTotalAmount = pricingInfo.totalAmount;
 
+  const currentEscapeCategory = categoryOverride || (Number(paxCount) >= 7 ? '7+' : Number(paxCount) >= 4 ? '4-6' : (offerId === 'complimentary' ? '4-6' : '2-3'));
+
   const handleOfferChange = (newOfferId) => {
     setOfferId(newOfferId);
-    if (newOfferId === 'custom_discount' && !customDiscountPercentage) {
-      setCustomDiscountPercentage('50');
+    if (newOfferId === 'custom_discount') {
+      if (!customDiscountPercentage) {
+        setCustomDiscountPercentage('50');
+      }
+      setReferencePerson('');
+    }
+    const discountOffers = [
+      'high_price_retention',
+      'birthday_package',
+      'corporate_package',
+      'second_game',
+      'cross_promotion',
+      'cross_promotion_brochure',
+      'complimentary'
+    ];
+    if (discountOffers.includes(newOfferId)) {
+      setReferencePerson(prev => (prev && prev.trim() ? prev : 'Nayeem Sir'));
     }
   };
 
@@ -244,11 +264,10 @@ export const BookingModal = ({
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!canSubmit) return;
-
+  const executeSubmitBooking = async (overrideCategory) => {
     setSubmitting(true);
+    const chosenCat = overrideCategory || currentEscapeCategory;
+
     const numericPayments = {
       Cash: parseInt(payments.Cash, 10) || 0,
       Card: parseInt(payments.Card, 10) || 0,
@@ -282,13 +301,14 @@ export const BookingModal = ({
         offerId !== 'none' && 
         offerId !== 'district_app' && 
         offerId !== 'website_booking' && 
-        offerId !== 'activity_kids'
-      ) ? (referencePerson || null) : null,
-      categoryOverride: categoryOverride || (offerId === 'complimentary' ? '4-6' : null),
-      customCategory: (categoryOverride || (offerId === 'complimentary' ? '4-6' : null)) 
-        ? ((categoryOverride || (offerId === 'complimentary' ? '4-6' : '')) === '2-3' 
+        offerId !== 'activity_kids' &&
+        offerId !== 'custom_discount'
+      ) ? (referencePerson || 'Nayeem Sir') : null,
+      categoryOverride: (activeVenue === VENUES.ESCAPE_TIME) ? chosenCat : null,
+      customCategory: (activeVenue === VENUES.ESCAPE_TIME)
+        ? (chosenCat === '2-3' 
             ? '2-3 Players Category' 
-            : (categoryOverride || (offerId === 'complimentary' ? '4-6' : '')) === '4-6' 
+            : chosenCat === '4-6' 
               ? '4-6 Players Category' 
               : '7+ Players Category') 
         : null,
@@ -300,12 +320,26 @@ export const BookingModal = ({
 
     try {
       await onSubmitBooking(bookingPayload, editingBooking?.id);
+      setShowComplimentaryCategoryConfirm(false);
       onClose();
     } catch (err) {
       console.error('Booking save error:', err);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+
+    // Before saving any complimentary game in Escape Time, preview category to cross-verify and change before saving
+    if (isComplimentary && activeVenue === VENUES.ESCAPE_TIME) {
+      setShowComplimentaryCategoryConfirm(true);
+      return;
+    }
+
+    await executeSubmitBooking();
   };
 
   if (!isOpen) return null;
@@ -486,7 +520,7 @@ export const BookingModal = ({
                     Escape Room Category Bracket
                   </label>
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-400">
-                    {offerId === 'complimentary' ? 'Auto-linked to 4-6 Bracket' : 'Customizable'}
+                    {offerId === 'complimentary' ? `Complimentary Category: ${currentEscapeCategory} Players` : 'Customizable'}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
@@ -495,14 +529,13 @@ export const BookingModal = ({
                     { id: '4-6', label: '4-6 Players' },
                     { id: '7+', label: '7+ Players' }
                   ].map(cat => {
-                    const currentCat = categoryOverride || (offerId === 'complimentary' ? '4-6' : (Number(paxCount) >= 7 ? '7+' : Number(paxCount) >= 4 ? '4-6' : '2-3'));
                     return (
                       <button
                         key={cat.id}
                         type="button"
                         onClick={() => setCategoryOverride(cat.id)}
                         className={`py-2 px-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all border ${
-                          currentCat === cat.id
+                          currentEscapeCategory === cat.id
                             ? 'bg-amber-600 text-white border-amber-700 shadow-md scale-95'
                             : 'bg-white text-amber-950 border-amber-300 hover:bg-amber-100'
                         }`}
@@ -562,9 +595,9 @@ export const BookingModal = ({
                 <Tag className="w-4 h-4 text-amber-700" />
                 <span>Select Offer / Discount</span>
               </div>
-              {pricingInfo.discountPercentage > 0 && (
+              {pricingInfo.discountPercentage > 0 && offerId !== 'custom_discount' && (
                 <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-amber-200 text-amber-900 border border-amber-400">
-                  Ref: {referencePerson}
+                  Ref: {referencePerson || 'Nayeem Sir'}
                 </span>
               )}
             </div>
@@ -659,13 +692,19 @@ export const BookingModal = ({
             )}
           </div>
 
-          {/* Reference Approval Selector when discount or special offer selected — NOT for custom notes */}
-          {(offerId !== 'none' && offerId !== 'district_app' && offerId !== 'website_booking' && offerId !== 'activity_kids') && (
+          {/* Reference Approval Selector when discount or special offer selected — NOT for custom notes or custom reason */}
+          {(
+            offerId !== 'none' && 
+            offerId !== 'district_app' && 
+            offerId !== 'website_booking' && 
+            offerId !== 'activity_kids' && 
+            offerId !== 'custom_discount'
+          ) && (
             <div className="p-4 rounded-2xl bg-amber-100/80 border border-amber-300 space-y-2.5 text-xs sm:text-sm">
               <div className="flex items-center justify-between font-bold text-amber-900">
                 <span className="flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-amber-700" />
-                  Whose Reference Approved This Discount? (Mandatory)
+                  Whose Reference Approved This Discount? (Default: Nayeem Sir)
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2.5 pt-1">
@@ -675,12 +714,12 @@ export const BookingModal = ({
                     type="button"
                     onClick={() => setReferencePerson(ref)}
                     className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold font-mono transition-all ${
-                      referencePerson === ref
+                      (referencePerson || 'Nayeem Sir') === ref
                         ? 'bg-amber-600 text-white shadow-md font-extrabold scale-95'
                         : 'bg-white text-amber-900 hover:bg-amber-200 border border-amber-300'
                     }`}
                   >
-                    {ref}
+                    {ref} {ref === 'Nayeem Sir' ? '(Default)' : ''}
                   </button>
                 ))}
               </div>
@@ -810,7 +849,7 @@ export const BookingModal = ({
                 <div>
                   <div className="text-xs sm:text-sm font-extrabold font-mono">
                     {isComplimentary
-                      ? 'COMPLIMENTARY GAME (KIDS UNDER 6) - NO PAYMENT COLLECTED'
+                      ? `COMPLIMENTARY GAME (UNDER 5 YEARS) - NO PAYMENT COLLECTED${activeVenue === VENUES.ESCAPE_TIME ? ` [${currentEscapeCategory} Category]` : ''}`
                       : isExactMatch
                         ? 'EXACT MATCH - READY TO SAVE'
                         : isPendingBooking
@@ -837,6 +876,47 @@ export const BookingModal = ({
               </div>
             )}
           </div>
+
+          {/* Complimentary Game Category Bracket Preview Before Saving (Escape Time) */}
+          {isComplimentary && activeVenue === VENUES.ESCAPE_TIME && (
+            <div className="p-4 rounded-2xl bg-purple-100/90 border-2 border-purple-400 shadow-sm space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-purple-800" />
+                  <span className="text-xs sm:text-sm font-black text-purple-950 uppercase tracking-wide">
+                    Category Bracket Preview (Escape Time)
+                  </span>
+                </div>
+                <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-purple-700 text-white shadow-sm">
+                  Selected: {currentEscapeCategory} Players Category
+                </span>
+              </div>
+              <p className="text-xs text-purple-900 font-semibold">
+                Cross-verify category before saving. Tap below to change if needed:
+              </p>
+              <div className="grid grid-cols-3 gap-2.5 pt-1">
+                {[
+                  { id: '2-3', label: '2-3 Players' },
+                  { id: '4-6', label: '4-6 Players' },
+                  { id: '7+', label: '7+ Players' }
+                ].map(cat => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setCategoryOverride(cat.id)}
+                    className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all border flex items-center justify-center gap-1.5 ${
+                      currentEscapeCategory === cat.id
+                        ? 'bg-purple-700 text-white border-purple-800 shadow-md scale-[1.02] ring-2 ring-purple-400'
+                        : 'bg-white text-purple-950 border-purple-300 hover:bg-purple-50'
+                    }`}
+                  >
+                    {currentEscapeCategory === cat.id && <CheckCircle2 className="w-4 h-4 text-purple-200" />}
+                    <span>{cat.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Action Footer */}
           <div className="pt-3 flex items-center justify-end gap-3 shrink-0">
@@ -868,6 +948,103 @@ export const BookingModal = ({
         </form>
 
       </div>
+
+      {/* Category Cross-Verification Modal Before Saving Complimentary Game (Escape Time) */}
+      {showComplimentaryCategoryConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-purple-500 space-y-5 relative">
+            <div className="flex items-center justify-between border-b border-purple-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-purple-100 text-purple-700 border border-purple-300">
+                  <Gift className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight">
+                    Cross-Verify Category Bracket
+                  </h3>
+                  <span className="text-[11px] font-mono font-bold text-purple-700 uppercase tracking-wider">
+                    Escape Time • Complimentary Game
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowComplimentaryCategoryConfirm(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-purple-50 p-3.5 rounded-2xl border border-purple-200 space-y-1.5 text-xs">
+              <div className="font-bold text-purple-950 flex justify-between">
+                <span>Room: <strong>{gameName}</strong></span>
+                <span>Date: <strong>{date}</strong></span>
+              </div>
+              <div className="font-medium text-purple-900">
+                Customer: <strong>{customerName || 'Complimentary Guest'}</strong> ({phone || 'No phone'})
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-black text-slate-800 uppercase tracking-wider">
+                Cross-Verify Category Bracket (Tap to Change):
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: '2-3', label: '2-3 Players' },
+                  { id: '4-6', label: '4-6 Players' },
+                  { id: '7+', label: '7+ Players' }
+                ].map(cat => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setCategoryOverride(cat.id)}
+                    className={`py-3 px-2 rounded-2xl text-xs sm:text-sm font-black transition-all border flex flex-col items-center justify-center gap-1 ${
+                      currentEscapeCategory === cat.id
+                        ? 'bg-purple-700 text-white border-purple-800 shadow-lg scale-95 ring-2 ring-purple-300'
+                        : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-purple-50'
+                    }`}
+                  >
+                    <span>{cat.label}</span>
+                    {currentEscapeCategory === cat.id ? (
+                      <span className="text-[10px] font-mono font-bold text-purple-200">Selected ✓</span>
+                    ) : (
+                      <span className="text-[10px] font-mono text-slate-400">Tap to pick</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-purple-100/70 border border-purple-300 text-xs text-purple-950 font-bold flex items-center justify-between">
+              <span>Saving under:</span>
+              <span className="font-mono text-purple-900 font-black px-2.5 py-0.5 bg-white rounded border border-purple-300">
+                {currentEscapeCategory} Players Category
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowComplimentaryCategoryConfirm(false)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-all"
+              >
+                Back / Change
+              </button>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => executeSubmitBooking(currentEscapeCategory)}
+                className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black text-white bg-purple-700 hover:bg-purple-800 active:scale-95 transition-all shadow-md flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirm & Save Game</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

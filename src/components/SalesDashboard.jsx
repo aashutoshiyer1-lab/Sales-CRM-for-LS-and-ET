@@ -96,6 +96,7 @@ export const SalesDashboard = ({
         if (bDate < dateFiltersMemo.startOfMonthStr || bDate > dateFiltersMemo.todayStr) return false;
       } else if (dateRangeMode === 'PENDING_ONLY') {
         if (b.status !== 'Pending') return false;
+        if (bDate !== dateFiltersMemo.todayStr) return false;
       } else if (dateRangeMode === 'CUSTOM') {
         if (customStartDate && bDate < customStartDate) return false;
         if (customEndDate && bDate > customEndDate) return false;
@@ -134,10 +135,10 @@ export const SalesDashboard = ({
     const confirmedBookings = filteredBookings.filter(b => b.status !== 'Pending');
     const pendingInFilter = filteredBookings.filter(b => b.status === 'Pending');
 
-    // Total pending bookings in whole scope
+    // Total pending bookings strictly for TODAY in venue (ignores advance bookings for tomorrow and future)
     const allPendingInVenue = bookings.filter(b => {
       if (venueToggle !== 'ALL' && b.venue !== venueToggle) return false;
-      return b.status === 'Pending';
+      return b.status === 'Pending' && b.date === dateFiltersMemo.todayStr;
     });
     const pendingGamesCount = allPendingInVenue.length;
 
@@ -462,7 +463,7 @@ export const SalesDashboard = ({
               { id: 'YESTERDAY', label: 'Yesterday' },
               { id: 'THIS_WEEK', label: 'This Week' },
               { id: 'THIS_MONTH', label: 'This Month' },
-              { id: 'PENDING_ONLY', label: 'Pending Games' },
+              { id: 'PENDING_ONLY', label: "Today's Pending Games" },
               { id: 'ALL_TIME', label: 'All Time' },
               { id: 'CUSTOM', label: 'Custom Date' }
             ].map((preset) => (
@@ -619,13 +620,13 @@ export const SalesDashboard = ({
               ? 'bg-amber-500 text-white border-2 border-amber-600 ring-4 ring-amber-200'
               : 'bg-amber-50/70 border-2 border-amber-300 hover:bg-amber-100/80'
           }`}
-          title={metrics.isPendingMode ? "Click to clear filter and show Today's sales" : "Click to view and edit pending games"}
+          title={metrics.isPendingMode ? "Click to clear filter and show Today's sales" : "Click to view and edit today's pending games"}
         >
           <div className="flex items-center justify-between">
             <span className={`text-xs font-extrabold uppercase tracking-wider ${
               metrics.isPendingMode ? 'text-amber-100' : 'text-amber-800'
             }`}>
-              {metrics.isPendingMode ? 'Filter Active' : 'Pending Games'}
+              {metrics.isPendingMode ? "Today's Pending Active" : "Today's Pending Games"}
             </span>
             <div className={`p-2.5 rounded-2xl border ${
               metrics.isPendingMode ? 'bg-amber-600 text-white border-amber-400' : 'bg-amber-100 text-amber-700 border-amber-300'
@@ -641,7 +642,7 @@ export const SalesDashboard = ({
           <div className={`text-[11px] mt-1 font-mono font-bold flex items-center justify-between ${
             metrics.isPendingMode ? 'text-amber-100' : 'text-amber-800'
           }`}>
-            <span>{metrics.isPendingMode ? 'Showing Pending Only' : 'Payment to be collected'}</span>
+            <span>{metrics.isPendingMode ? "Showing Today's Pending" : "Payment to be collected today"}</span>
             <span className="text-[10px] underline">{metrics.isPendingMode ? 'Click to show All →' : 'Click to view →'}</span>
           </div>
         </div>

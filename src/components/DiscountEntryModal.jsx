@@ -188,7 +188,7 @@ export const DiscountEntryModal = ({
   const [percentage, setPercentage] = useState('30');
   const [customPct, setCustomPct] = useState('25');
   const [reason, setReason] = useState('cross promotion coupon');
-  const [reference, setReference] = useState('Khaja Sir');
+  const [reference, setReference] = useState('Nayeem Sir');
   const [customFullNote, setCustomFullNote] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
@@ -210,7 +210,7 @@ export const DiscountEntryModal = ({
       setPercentage(initialEntry.percentage !== undefined ? String(initialEntry.percentage) : '30');
       setCustomPct(initialEntry.customPct !== undefined ? String(initialEntry.customPct) : '25');
       setReason(initialEntry.reason || 'cross promotion coupon');
-      setReference(initialEntry.reference || 'Khaja Sir');
+      setReference(initialEntry.reference || 'Nayeem Sir');
       setCustomFullNote(initialEntry.customFullNote || '');
       setCustomerName(initialEntry.customerName || '');
       setPhone(initialEntry.phone || '');
@@ -229,7 +229,7 @@ export const DiscountEntryModal = ({
       setPercentage('30');
       setCustomPct('25');
       setReason('cross promotion coupon');
-      setReference('Khaja Sir');
+      setReference('Nayeem Sir');
       setCustomFullNote('');
       setCustomerName('');
       setPhone('');
@@ -252,16 +252,22 @@ export const DiscountEntryModal = ({
     setReason(newReason);
     if (newReason === 'cross promotion coupon' || newReason === 'cross promotion brochure') {
       setPercentage('30');
+      setReference(prev => (prev && prev !== '' ? prev : 'Nayeem Sir'));
     } else if (newReason === 'going back due to high prices') {
       setPercentage('10');
+      setReference(prev => (prev && prev !== '' ? prev : 'Nayeem Sir'));
     } else if (newReason === 'birthday package') {
       setPercentage('15');
+      setReference(prev => (prev && prev !== '' ? prev : 'Nayeem Sir'));
     } else if (newReason === '2nd game discount') {
       setPercentage(category === 'laser' ? '10' : '20');
+      setReference(prev => (prev && prev !== '' ? prev : 'Nayeem Sir'));
     } else if (newReason === 'corporate package') {
       setPercentage('15');
+      setReference(prev => (prev && prev !== '' ? prev : 'Nayeem Sir'));
     } else if (newReason === 'kids under 5 years') {
       setPercentage('complementary');
+      setReference(prev => (prev && prev !== '' ? prev : 'Nayeem Sir'));
     } else if (newReason === 'district app' || newReason === 'website booking' || newReason === 'activity kids' || newReason === 'custom') {
       setReference('');
     }
@@ -294,7 +300,7 @@ export const DiscountEntryModal = ({
     percentage,
     customPct: parseInt(customPct, 10) || 0,
     reason,
-    reference,
+    reference: isCustomReason || isOnlineReason ? '' : (reference || 'Nayeem Sir'),
     customFullNote,
     customerName,
     phone
@@ -617,7 +623,7 @@ export const DiscountEntryModal = ({
               </div>
               <select
                 disabled={isOnlineReason}
-                value={reference}
+                value={reference || 'Nayeem Sir'}
                 onChange={(e) => setReference(e.target.value)}
                 className={`w-full text-xs font-bold p-2.5 rounded-xl border transition-all ${
                   isMissingRef
@@ -625,9 +631,8 @@ export const DiscountEntryModal = ({
                     : 'border-slate-200 bg-slate-50'
                 }`}
               >
-                <option value="">Select Reference Person...</option>
+                <option value="Nayeem Sir">Nayeem Sir (Default)</option>
                 <option value="Khaja Sir">Khaja Sir</option>
-                <option value="Nayeem Sir">Nayeem Sir</option>
               </select>
             </div>
           )}

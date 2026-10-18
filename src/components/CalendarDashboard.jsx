@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { VENUES, VENUE_DETAILS, getOperatingHours } from '../config/venueData';
+import { VENUES, VENUE_DETAILS, getOperatingHours, getLocalDateString } from '../config/venueData';
 import { getGameCategoryLabel } from '../utils/pricingEngine';
 import { 
   Calendar as CalendarIcon, 
@@ -112,10 +112,12 @@ export const CalendarDashboard = ({
     return map;
   }, [activeBookings]);
 
-  // List pending games strictly for the CURRENT SELECTED DATE across ALL VENUES
-  const dayPendingBookings = useMemo(() => {
-    return bookings.filter(b => b.date === selectedDate && b.status === 'Pending');
-  }, [bookings, selectedDate]);
+  const todayStr = useMemo(() => getLocalDateString(), []);
+
+  // List pending games strictly for TODAY across ALL VENUES (never tomorrow's or future advance bookings)
+  const todayPendingBookings = useMemo(() => {
+    return bookings.filter(b => b.date === todayStr && b.status === 'Pending');
+  }, [bookings, todayStr]);
 
   // Handle navigating directly to a pending booking from dropdown across both venues
   const handleJumpToPending = (bookingId) => {
@@ -123,6 +125,11 @@ export const CalendarDashboard = ({
     const target = bookings.find(b => b.id === bookingId);
     if (!target) return;
     
+    // Switch to target's date if not already selected
+    if (selectedDate !== target.date) {
+      setSelectedDate(target.date);
+    }
+
     // Switch venue if needed
     if (target.venue && target.venue !== activeVenue && setActiveVenue) {
       setActiveVenue(target.venue);
@@ -134,7 +141,7 @@ export const CalendarDashboard = ({
         slotElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
       onEditBooking(target);
-    }, 50);
+    }, 150);
   };
 
   // Exclude Pending Games from Day Revenue, Total Players, and Total Games metrics
@@ -238,8 +245,8 @@ export const CalendarDashboard = ({
           </button>
         </div>
 
-        {/* Pending Games Quick Jump Dropdown - Filtered STRICTLY for the Selected Date */}
-        {dayPendingBookings.length > 0 && (
+        {/* Pending Games Quick Jump Dropdown - Filtered STRICTLY for TODAY */}
+        {todayPendingBookings.length > 0 && (
           <div className="flex items-center gap-2 bg-amber-50 p-2.5 rounded-2xl border border-amber-300 shadow-sm w-full lg:w-auto">
             <Clock3 className="w-4 h-4 text-amber-700 ml-1 shrink-0" />
             <select
@@ -248,9 +255,9 @@ export const CalendarDashboard = ({
               defaultValue=""
             >
               <option value="" disabled>
-                -- Today's Pending Entries ({dayPendingBookings.length}) --
+                -- Today's Pending Entries ({todayPendingBookings.length}) --
               </option>
-              {dayPendingBookings.map((pb) => (
+              {todayPendingBookings.map((pb) => (
                 <option key={pb.id} value={pb.id}>
                   [{pb.venue || 'Escape Time'}] {pb.customerName} - {pb.gameName} ({pb.timeSlot})
                 </option>

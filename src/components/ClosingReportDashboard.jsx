@@ -548,7 +548,7 @@ export const ClosingReportDashboard = ({
       const isCustomDiscount = b.offerId === 'custom_discount' || Boolean(b.customDiscountReason) || Boolean(customNoteText);
       const customReason = customNoteText || (b.offerName || '').trim();
 
-      const requiresRef = !isOnline && pct > 0;
+      const requiresRef = !isOnline && pct > 0 && offerId !== 'custom_discount';
 
       let noteText = '';
       let baseSentence = '';
