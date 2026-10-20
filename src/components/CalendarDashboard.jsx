@@ -64,22 +64,51 @@ export const CalendarDashboard = ({
     setSelectedDate(new Date().toISOString().split('T')[0]);
   };
 
+  const activeBookings = useMemo(() => {
+    return bookings.filter(b => {
+      const matchVenue = b.venue === activeVenue;
+      const matchDate = b.date === selectedDate;
+      const matchGame = gameFilter === 'ALL' || b.gameName === gameFilter;
+      return matchVenue && matchDate && matchGame;
+    });
+  }, [bookings, activeVenue, selectedDate, gameFilter]);
+
   // Generate 15-minute slot intervals using startMinutes & endMinutes
+  // Extends dynamically if any bookings exist beyond normal operating hours up to night 1:00 AM
   const timeSlots = useMemo(() => {
     const slots = [];
     let currMinutes = operatingHours.startMinutes;
-    const endMinutes = operatingHours.endMinutes;
+    let endMinutes = operatingHours.endMinutes;
+
+    // Check if any bookings exist beyond normal operating hours on this day
+    activeBookings.forEach(b => {
+      if (b.timeSlot) {
+        const [bh, bm] = b.timeSlot.split(':').map(Number);
+        if (!isNaN(bh) && !isNaN(bm)) {
+          const effectiveHour = bh < 6 ? bh + 24 : bh;
+          const bMin = effectiveHour * 60 + bm;
+          if (bMin > endMinutes) {
+            endMinutes = Math.min(25 * 60, bMin);
+          }
+        }
+      }
+    });
 
     while (currMinutes <= endMinutes) {
-      const h = Math.floor(currMinutes / 60);
+      const hRaw = Math.floor(currMinutes / 60);
       const m = currMinutes % 60;
+      const h24 = hRaw % 24;
       
-      const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      const timeStr = `${String(h24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
       
-      const period = h >= 12 ? 'PM' : 'AM';
-      let h12 = h % 12;
-      if (h12 === 0) h12 = 12;
-      const displayLabel = `${h12}:${String(m).padStart(2, '0')} ${period}`;
+      const period = (h24 >= 12 && hRaw < 24) ? 'PM' : 'AM';
+      let h12 = h24;
+      if (h24 === 0) {
+        h12 = 12;
+      } else if (h24 > 12) {
+        h12 = h24 - 12;
+      }
+      const displayLabel = `${h12}:${String(m).padStart(2, '0')} ${period}${currMinutes === 24 * 60 ? ' (Midnight)' : currMinutes > operatingHours.endMinutes ? ' (Late Night)' : ''}`;
 
       slots.push({
         timeStr,
@@ -90,16 +119,7 @@ export const CalendarDashboard = ({
       currMinutes += 15;
     }
     return slots;
-  }, [operatingHours]);
-
-  const activeBookings = useMemo(() => {
-    return bookings.filter(b => {
-      const matchVenue = b.venue === activeVenue;
-      const matchDate = b.date === selectedDate;
-      const matchGame = gameFilter === 'ALL' || b.gameName === gameFilter;
-      return matchVenue && matchDate && matchGame;
-    });
-  }, [bookings, activeVenue, selectedDate, gameFilter]);
+  }, [operatingHours, activeBookings]);
 
   const slotBookingsMap = useMemo(() => {
     const map = {};
@@ -153,6 +173,7 @@ export const CalendarDashboard = ({
   const dayPlayers = confirmedDayBookings.reduce((sum, b) => sum + (Number(b.paxCount) || 0), 0);
   // Exclude Complimentary Games & Pending Games from Total Games metric count
   const totalGamesCount = confirmedDayBookings.filter(b => b.offerId !== 'complimentary').length;
+  const complimentaryGamesCount = confirmedDayBookings.filter(b => b.offerId === 'complimentary').length;
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -200,7 +221,14 @@ export const CalendarDashboard = ({
             <div className="w-px h-10 bg-slate-200" />
             <div className="px-3 py-1">
               <div className="text-[11px] text-slate-500 font-extrabold uppercase tracking-wider">Total Games</div>
-              <div className="text-2xl font-black text-amber-600 font-mono">{totalGamesCount}</div>
+              <div className="text-2xl font-black text-amber-600 font-mono flex items-baseline gap-1.5 flex-wrap">
+                <span>{totalGamesCount}</span>
+                {complimentaryGamesCount > 0 && (
+                  <span className="text-xs font-bold font-mono text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded border border-purple-300">
+                    (+{complimentaryGamesCount} Compl.)
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>

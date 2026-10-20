@@ -50,6 +50,7 @@ export const BookingModal = ({
   const [referencePerson, setReferencePerson] = useState('Nayeem Sir');
   const [categoryOverride, setCategoryOverride] = useState('');
   const [showComplimentaryCategoryConfirm, setShowComplimentaryCategoryConfirm] = useState(false);
+  const [isCustomTimeMode, setIsCustomTimeMode] = useState(false);
   
   const [isPendingBooking, setIsPendingBooking] = useState(false);
 
@@ -65,24 +66,33 @@ export const BookingModal = ({
   const [submitting, setSubmitting] = useState(false);
 
   // Generate dynamic 15-minute interval time slots in 12-hour AM/PM format strictly based on date operating hours
+  // Extended up to night 1:00 AM (25 * 60 minutes)
   const dynamicTimeSlotOptions = useMemo(() => {
     const hours = getOperatingHours(date);
     const slots = [];
     let currMinutes = hours.startMinutes;
-    const endMinutes = hours.endMinutes;
+    // Generate slots up to night 1:00 AM (25 * 60 minutes)
+    const endMinutes = 25 * 60;
 
     while (currMinutes <= endMinutes) {
-      const h = Math.floor(currMinutes / 60);
+      const hRaw = Math.floor(currMinutes / 60);
       const m = currMinutes % 60;
+      const h24 = hRaw % 24;
       
-      const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      const timeStr = `${String(h24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
       
-      const period = h >= 12 ? 'PM' : 'AM';
-      let h12 = h % 12;
-      if (h12 === 0) h12 = 12;
-      const displayLabel = `${h12}:${String(m).padStart(2, '0')} ${period}`;
+      const period = (h24 >= 12 && hRaw < 24) ? 'PM' : 'AM';
+      let h12 = h24;
+      if (h24 === 0) {
+        h12 = 12;
+      } else if (h24 > 12) {
+        h12 = h24 - 12;
+      }
+      
+      const isLate = currMinutes > hours.endMinutes;
+      const displayLabel = `${h12}:${String(m).padStart(2, '0')} ${period}${currMinutes === 24 * 60 ? ' (Midnight)' : isLate ? ' (Late Night)' : ''}`;
 
-      slots.push({ value: timeStr, label: displayLabel });
+      slots.push({ value: timeStr, label: displayLabel, isLate });
       currMinutes += 15;
     }
     return slots;
@@ -109,6 +119,7 @@ export const BookingModal = ({
       setCategoryOverride(editingBooking.categoryOverride || '');
       setIsPendingBooking(editingBooking.status === 'Pending');
       setShowComplimentaryCategoryConfirm(false);
+      setIsCustomTimeMode(Boolean(editingBooking.timeSlot && !dynamicTimeSlotOptions.some(s => s.value === editingBooking.timeSlot)));
       
       const prevPay = editingBooking.payments || {};
       setPayments({
@@ -137,6 +148,7 @@ export const BookingModal = ({
       setCategoryOverride('');
       setIsPendingBooking(false);
       setShowComplimentaryCategoryConfirm(false);
+      setIsCustomTimeMode(false);
       setPayments({
         Cash: '',
         Card: '',
@@ -165,12 +177,15 @@ export const BookingModal = ({
 
   // Auto-adapt timeSlot whenever date changes to match valid operating hours for that day (weekday vs weekend)
   useEffect(() => {
-    if (!isOpen || dynamicTimeSlotOptions.length === 0) return;
+    if (!isOpen || dynamicTimeSlotOptions.length === 0 || isCustomTimeMode) return;
     const isValidSlot = dynamicTimeSlotOptions.some(s => s.value === timeSlot);
     if (!isValidSlot) {
+      if (timeSlot && /^\d{1,2}:\d{2}$/.test(timeSlot)) {
+        return;
+      }
       setTimeSlot(dynamicTimeSlotOptions[0].value);
     }
-  }, [date, dynamicTimeSlotOptions, isOpen]);
+  }, [date, dynamicTimeSlotOptions, isOpen, isCustomTimeMode]);
 
   // Pricing Calculation
   const pricingInfo = calculatePricing({
@@ -494,20 +509,48 @@ export const BookingModal = ({
               </div>
               
               <div className="p-2.5 rounded-2xl bg-amber-100/60 border border-amber-300">
-                <label className="block text-[11px] font-black text-amber-800 mb-1 uppercase tracking-wider flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-amber-700" /> Time Slot (12h)
-                </label>
-                <select
-                  value={timeSlot}
-                  onChange={(e) => setTimeSlot(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-amber-300 text-xs sm:text-sm font-mono font-bold text-amber-900 focus:outline-none cursor-pointer"
-                >
-                  {dynamicTimeSlotOptions.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-black text-amber-800 uppercase tracking-wider flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-amber-700" /> Time Slot (Till 12 AM)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomTimeMode(!isCustomTimeMode)}
+                    className="text-[10px] font-mono font-bold text-amber-900 bg-amber-200 hover:bg-amber-300 px-1.5 py-0.5 rounded transition-all"
+                  >
+                    {isCustomTimeMode ? 'Pick from List' : 'Custom Time'}
+                  </button>
+                </div>
+                {isCustomTimeMode ? (
+                  <input
+                    type="text"
+                    placeholder="e.g. 10:45 PM or 23:15"
+                    value={timeSlot}
+                    onChange={(e) => setTimeSlot(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-amber-300 text-xs sm:text-sm font-mono font-bold text-amber-900 focus:outline-none"
+                  />
+                ) : (
+                  <select
+                    value={timeSlot}
+                    onChange={(e) => setTimeSlot(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-amber-300 text-xs sm:text-sm font-mono font-bold text-amber-900 focus:outline-none cursor-pointer"
+                  >
+                    <optgroup label="Standard Operating Hours">
+                      {dynamicTimeSlotOptions.filter(s => !s.isLate).map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="🌙 Extended / Late Night Slots (Till 1 AM)">
+                      {dynamicTimeSlotOptions.filter(s => s.isLate).map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                )}
               </div>
             </div>
 

@@ -119,11 +119,23 @@ export const SalesDashboard = ({
   }, [bookings, venueToggle, dateRangeMode, customStartDate, customEndDate, searchQuery, dateFiltersMemo]);
 
   // Chronological Sorting: Date ascending (earliest date first), TimeSlot ascending (11:00 AM before 11:15 AM before 11:30 AM...)
+  // Treats midnight (00:xx) and late night (01:xx) slots as end of shift so they sort at the end of the day's schedule
   const sortedBookings = useMemo(() => {
+    const getTimeSlotMinutes = (slot) => {
+      if (!slot) return 0;
+      const [h, m] = slot.split(':').map(Number);
+      if (isNaN(h) || isNaN(m)) return 0;
+      const effectiveHour = h < 6 ? h + 24 : h;
+      return effectiveHour * 60 + m;
+    };
+
     return [...filteredBookings].sort((a, b) => {
       if (a.date !== b.date) {
         return (a.date || '').localeCompare(b.date || '');
       }
+      const minA = getTimeSlotMinutes(a.timeSlot);
+      const minB = getTimeSlotMinutes(b.timeSlot);
+      if (minA !== minB) return minA - minB;
       return (a.timeSlot || '').localeCompare(b.timeSlot || '');
     });
   }, [filteredBookings]);
@@ -149,6 +161,7 @@ export const SalesDashboard = ({
     const confirmedRevenue = confirmedBookings.reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
     const confirmedPlayers = confirmedBookings.reduce((sum, b) => sum + (Number(b.paxCount) || 0), 0);
     const confirmedGamesCount = confirmedBookings.filter(b => b.offerId !== 'complimentary').length;
+    const complimentaryGamesCount = confirmedBookings.filter(b => b.offerId === 'complimentary').length;
 
     // When in PENDING_ONLY mode, show the pending games' sales values instead of 0!
     const totalRevenue = isPendingMode ? pendingRevenue : confirmedRevenue;
@@ -184,6 +197,7 @@ export const SalesDashboard = ({
       totalRevenue,
       totalPlayers,
       totalGamesCount,
+      complimentaryGamesCount,
       pendingGamesCount,
       totalDiscounts,
       paymentBreakdown,
@@ -287,7 +301,10 @@ export const SalesDashboard = ({
         : dateRangeMode.replace('_', ' ');
 
     let copyText = `📊 SALES & REVENUE REPORT (${venueToggle} - ${filterLabel})\n`;
-    copyText += `Total Revenue: ₹${metrics.totalRevenue.toLocaleString()} | Total Players: ${metrics.totalPlayers} | Total Games: ${metrics.totalGamesCount}\n`;
+    const complSummary = !metrics.isPendingMode && metrics.complimentaryGamesCount > 0 
+      ? ` (+${metrics.complimentaryGamesCount} Compl.) [Total: ${metrics.totalGamesCount + metrics.complimentaryGamesCount}]` 
+      : '';
+    copyText += `Total Revenue: ₹${metrics.totalRevenue.toLocaleString()} | Total Players: ${metrics.totalPlayers} | Total Games: ${metrics.totalGamesCount}${complSummary}\n`;
     copyText += `--------------------------------------------------\n\n`;
 
     sortedBookings.forEach((b, idx) => {
@@ -600,15 +617,24 @@ export const SalesDashboard = ({
               <Receipt className="w-5 h-5" />
             </div>
           </div>
-          <div className={`text-3xl font-black font-mono mt-3 ${
+          <div className={`text-3xl font-black font-mono mt-3 flex items-baseline gap-2 flex-wrap ${
             metrics.isPendingMode ? 'text-amber-950' : 'text-slate-900'
           }`}>
-            {metrics.totalGamesCount}
+            <span>{metrics.totalGamesCount}</span>
+            {!metrics.isPendingMode && metrics.complimentaryGamesCount > 0 && (
+              <span className="text-sm font-bold font-mono text-purple-700 bg-purple-100 px-2 py-0.5 rounded-lg border border-purple-300">
+                (+{metrics.complimentaryGamesCount} Compl.)
+              </span>
+            )}
           </div>
           <div className={`text-[11px] mt-1 font-mono font-semibold ${
             metrics.isPendingMode ? 'text-amber-800' : 'text-slate-600'
           }`}>
-            {metrics.isPendingMode ? 'Games awaiting payment & confirmation' : 'Confirmed game entries'}
+            {metrics.isPendingMode 
+              ? 'Games awaiting payment & confirmation' 
+              : metrics.complimentaryGamesCount > 0
+                ? `Total: ${metrics.totalGamesCount + metrics.complimentaryGamesCount} games (${metrics.totalGamesCount} paid + ${metrics.complimentaryGamesCount} complimentary)`
+                : 'Confirmed game entries'}
           </div>
         </div>
 
