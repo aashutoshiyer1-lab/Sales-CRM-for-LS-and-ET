@@ -66,10 +66,10 @@ export const formatCustomNoteGrammar = (raw) => {
 };
 
 const PREDEFINED_STAFF_LIST = [
-  'Aashutosh',
+  'AASHUTOSH',
   'CHINNA BABU',
-  'Mallikarjun',
-  'Nageena'
+  'MALLIKARJUN',
+  'NAGEENA'
 ];
 
 export const ClosingReportDashboard = ({ 
@@ -84,10 +84,14 @@ export const ClosingReportDashboard = ({
 
   const initialCached = useMemo(() => getCachedClosingReport(initialDate), [initialDate]);
 
-  const [selectedStaffOption, setSelectedStaffOption] = useState(() => initialCached?.selectedStaffOption || 'Aashutosh');
+  const [selectedStaffOption, setSelectedStaffOption] = useState(() => {
+    const raw = initialCached?.selectedStaffOption || 'AASHUTOSH';
+    return raw.toUpperCase() === 'CUSTOM' ? 'custom' : raw.toUpperCase();
+  });
   const [customStaffName, setCustomStaffName] = useState(() => initialCached?.customStaffName || '');
   
-  const staffName = selectedStaffOption === 'custom' ? customStaffName : selectedStaffOption;
+  const rawStaff = selectedStaffOption === 'custom' ? customStaffName : selectedStaffOption;
+  const staffName = (rawStaff || 'AASHUTOSH').trim().toUpperCase();
 
   const [copiedReport, setCopiedReport] = useState(false);
   const [copiedBucket, setCopiedBucket] = useState(null);
@@ -113,6 +117,7 @@ export const ClosingReportDashboard = ({
   // Manual inputs for excess amounts & custom notes — cached locally and deep-synced via RTDB
   const [excessAmounts, setExcessAmounts] = useState(() => ({
     laser: '',
+    escape: '',
     lab: '',
     lockedIn: '',
     sherlock: '',
@@ -707,17 +712,17 @@ export const ClosingReportDashboard = ({
   // Derived Auto Escape Print Text
   const autoEscapePrintText = useMemo(() => {
     const blocks = [];
-    if (allDiscountNotes.lab.length > 0) {
-      blocks.push(`*PROFESSOR'S LAB*\n` + allDiscountNotes.lab.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
-    }
     if (allDiscountNotes.lockedIn.length > 0) {
       blocks.push(`*LOCKED IN*\n` + allDiscountNotes.lockedIn.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
     }
+    if (allDiscountNotes.lab.length > 0) {
+      blocks.push(`*PROFESSOR X'S LAB*\n` + allDiscountNotes.lab.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
+    }
     if (allDiscountNotes.sherlock.length > 0) {
-      blocks.push(`*Sherlock*\n` + allDiscountNotes.sherlock.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
+      blocks.push(`*SHERLOCK'S LAST CASE*\n` + allDiscountNotes.sherlock.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
     }
     if (allDiscountNotes.spy.length > 0) {
-      blocks.push(`*Spy Agent*\n` + allDiscountNotes.spy.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
+      blocks.push(`*SPY AGENTS*\n` + allDiscountNotes.spy.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
     }
     return blocks.length > 0 ? blocks.join('\n\n') : 'No Escape Room notes.';
   }, [allDiscountNotes]);
@@ -725,6 +730,22 @@ export const ClosingReportDashboard = ({
   // Construct Dynamic WhatsApp Closing Report Text
   const generatedWhatsAppReport = useMemo(() => {
     const formattedDate = formatDateDDMMYYYY(shiftDate);
+
+    const pad2 = (val) => {
+      const n = parseInt(val, 10);
+      if (isNaN(n) || n === 0) return '00';
+      return String(n).padStart(2, '0');
+    };
+
+    const formatExcess = (val) => {
+      if (!val || String(val).trim() === '' || String(val).trim() === '0') return '00';
+      const clean = String(val).trim();
+      const n = parseInt(clean, 10);
+      if (!isNaN(n) && n < 10 && n >= 0) {
+        return String(n).padStart(2, '0');
+      }
+      return clean;
+    };
 
     const formatNotesBlock = (customNote, autoNotes) => {
       const combined = [];
@@ -735,79 +756,71 @@ export const ClosingReportDashboard = ({
         combined.push(`${idx + 1}. ${n}`);
       });
       if (combined.length === 0) {
-        return 'Note: ';
+        return 'Note:- ';
       }
-      return `Note: \n${combined.join('\n\n')}`;
+      return `Note:- \n${combined.join('\n\n')}`;
     };
 
     const laserNotesText = formatNotesBlock(notes.laser, allDiscountNotes.laser);
-    const labNotesText = formatNotesBlock(notes.lab, allDiscountNotes.lab);
     const lockedInNotesText = formatNotesBlock(notes.lockedIn, allDiscountNotes.lockedIn);
+    const labNotesText = formatNotesBlock(notes.lab, allDiscountNotes.lab);
     const sherlockNotesText = formatNotesBlock(notes.sherlock, allDiscountNotes.sherlock);
     const spyNotesText = formatNotesBlock(notes.spy, allDiscountNotes.spy);
 
-    const laserExcessVal = excessAmounts.laser ? `${excessAmounts.laser}/-` : '';
-    const labExcessVal = excessAmounts.lab ? `${excessAmounts.lab}/-` : '0/-';
-    const lockedInExcessVal = excessAmounts.lockedIn ? `${excessAmounts.lockedIn}/-` : '0/-';
-    const sherlockExcessVal = excessAmounts.sherlock ? `${excessAmounts.sherlock}/-` : '0/-';
-    const spyExcessVal = excessAmounts.spy ? `${excessAmounts.spy}/-` : '0/-';
+    const laserExcessVal = formatExcess(excessAmounts.laser);
+    const escapeExcessVal = formatExcess(excessAmounts.escape !== undefined ? excessAmounts.escape : (excessAmounts.lab || ''));
+    const staffNameUpper = (staffName || 'AASHUTOSH').trim().toUpperCase();
 
-    return `Assalamualaikum
-${formattedDate}
+    return `*${formattedDate}*
 
 *LASER SHOOTER SALES*
-No: of sessions:-${laserSessions}
-Total Games: ${laserTotalGames}
-10 mins games: ${laser10Min}
-20 min games: ${laser20Min}
-30 mins games: ${laser30Min}
-Staff game: ${staffGamesCount}
-Complementary game:${derivedComplementaryCountLaser}
-Total sale:- *${laserTotalSale.toLocaleString()}/-
-Excess:-${laserExcessVal}
+No: of sessions:- *${pad2(laserSessions)}*
+Total Games: *${pad2(laserTotalGames)}*
+10 mins games: *${pad2(laser10Min)}*
+20 min games: *${pad2(laser20Min)}*
+30 mins games: *${pad2(laser30Min)}*
+Staff game: *${pad2(staffGamesCount)}*
+Complementary game: *${pad2(derivedComplementaryCountLaser)}*
+Total sale:- *₹${laserTotalSale.toLocaleString()}/-*
+Excess:- *${laserExcessVal}*
 ${laserNotesText}
 
-Fog machine - off
+Fog machine - OFF
 
-ESCAPE TIME SALES
-       *PROFESSOR'S LAB*
-No of sessions:-${labStats.sessions}
-Total games :-${labStats.games}
-Total sale:-${labStats.sale.toLocaleString()}/-
-Complementary game:${labStats.complCount}
-Excess :-${labExcessVal}
-${labNotesText}
+*ESCAPE TIME SALES*
+Excess:- *${escapeExcessVal}*
 
-    *LOCKED IN*
-No of sessions:-${lockedInStats.sessions}
-Total games :-${lockedInStats.games}
-Total sale:-${lockedInStats.sale.toLocaleString()}/-
-Complementary game:${lockedInStats.complCount}
-Excess :-${lockedInExcessVal}
+       *LOCKED IN*
+No of sessions:- *${pad2(lockedInStats.sessions)}*
+Total games :- *${pad2(lockedInStats.games)}*
+Total sale:- ₹${lockedInStats.sale.toLocaleString()}/-
+Complementary game: *${pad2(lockedInStats.complCount)}*
 ${lockedInNotesText}
 
-*Sherlock*
-No of sessions:-${sherlockStats.sessions}
-Total games :-${sherlockStats.games}
-Total sale:-${sherlockStats.sale.toLocaleString()}/-
-Complementary game:${sherlockStats.complCount}
-Excess :-${sherlockExcessVal}
+       *PROFESSOR X'S LAB*
+No of sessions:- *${pad2(labStats.sessions)}*
+Total games :- *${pad2(labStats.games)}*
+Total sale:- ₹${labStats.sale.toLocaleString()}/-
+Complementary game: *${pad2(labStats.complCount)}*
+${labNotesText}
+
+       *SHERLOCK'S LAST CASE*
+No of sessions:- *${pad2(sherlockStats.sessions)}*
+Total games :- *${pad2(sherlockStats.games)}*
+Total sale:- ₹${sherlockStats.sale.toLocaleString()}/-
+Complementary game: *${pad2(sherlockStats.complCount)}*
 ${sherlockNotesText}
 
- *Spy Agent*
-No of sessions:-${spyStats.sessions}
-Total games :-${spyStats.games}
-Total sale:-${spyStats.sale.toLocaleString()}/-
-Complementary game:${spyStats.complCount}
-Excess :-${spyExcessVal}
+       *SPY AGENTS*
+No of sessions:- *${pad2(spyStats.sessions)}*
+Total games :- *${pad2(spyStats.games)}*
+Total sale:- ₹${spyStats.sale.toLocaleString()}/-
+Complementary game: *${pad2(spyStats.complCount)}*
 ${spyNotesText}
 
-Number of no shows ${totalNoShows}
-Lasershooter ${noShowsLaser}
-Escapetime:${noShowsEscape}
 
-*Overall sale*:-${overallSale.toLocaleString()}/-
-     ${staffName.trim() || 'Aashutosh'}`;
+*Overall sale*:- *₹${overallSale.toLocaleString()}/-*
+     *${staffNameUpper}*`;
   }, [
     shiftDate,
     laserSessions,
@@ -821,13 +834,10 @@ Escapetime:${noShowsEscape}
     excessAmounts,
     notes,
     allDiscountNotes,
-    labStats,
     lockedInStats,
+    labStats,
     sherlockStats,
     spyStats,
-    totalNoShows,
-    noShowsLaser,
-    noShowsEscape,
     overallSale,
     staffName
   ]);
@@ -1189,10 +1199,39 @@ Escapetime:${noShowsEscape}
               </span>
             </div>
 
+            {/* Escape Time Overall Excess (Populates at once under ESCAPE TIME SALES) */}
+            <div className="p-3.5 bg-red-50/70 rounded-xl border border-red-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-xs font-black text-red-950 uppercase tracking-wide block">
+                  Escape Time Overall Excess
+                </span>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Populates at once under Escape Time Sales in closing message
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-600">₹</span>
+                <input
+                  type="text"
+                  placeholder="00"
+                  value={excessAmounts.escape !== undefined ? excessAmounts.escape : (excessAmounts.lab || '')}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setExcessAmounts(prev => {
+                      const next = { ...prev, escape: val };
+                      persistUpdates({ excessAmounts: next });
+                      return next;
+                    });
+                  }}
+                  className="w-28 text-center text-sm font-mono font-black text-slate-950 bg-white p-2 rounded-xl border border-red-300 focus:outline-none focus:ring-2 focus:ring-red-500 shadow-xs"
+                />
+              </div>
+            </div>
+
             <div className="space-y-4">
               {[
-                { name: "Professor X's Lab", key: 'lab', stats: labStats, bg: 'bg-red-50/40', border: 'border-red-100' },
                 { name: "Locked In", key: 'lockedIn', stats: lockedInStats, bg: 'bg-amber-50/40', border: 'border-amber-100' },
+                { name: "Professor X's Lab", key: 'lab', stats: labStats, bg: 'bg-red-50/40', border: 'border-red-100' },
                 { name: "Sherlock's Last Case", key: 'sherlock', stats: sherlockStats, bg: 'bg-emerald-50/40', border: 'border-emerald-100' },
                 { name: "Spy Agents", key: 'spy', stats: spyStats, bg: 'bg-cyan-50/40', border: 'border-cyan-100' }
               ].map(room => (
@@ -1217,21 +1256,8 @@ Escapetime:${noShowsEscape}
                       <span className="font-mono font-black text-lg sm:text-xl text-slate-950 block mt-0.5">{room.stats.complCount}</span>
                     </div>
                     <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-                      <span className="text-[11px] text-slate-600 font-extrabold block uppercase tracking-wider">Excess (₹)</span>
-                      <input
-                        type="text"
-                        placeholder="0"
-                        value={excessAmounts[room.key] || ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setExcessAmounts(prev => {
-                            const next = { ...prev, [room.key]: val };
-                            persistUpdates({ excessAmounts: next });
-                            return next;
-                          });
-                        }}
-                        className="w-full text-center text-sm sm:text-base font-mono font-black text-slate-950 border-b border-slate-300 focus:outline-none focus:border-red-500 mt-0.5"
-                      />
+                      <span className="text-[11px] text-slate-600 font-extrabold block uppercase tracking-wider">Sale (₹)</span>
+                      <span className="font-mono font-black text-lg sm:text-xl text-red-700 block mt-0.5">₹{room.stats.sale.toLocaleString()}</span>
                     </div>
                   </div>
 
