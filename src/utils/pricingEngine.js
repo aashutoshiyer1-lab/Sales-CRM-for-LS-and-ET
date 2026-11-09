@@ -159,3 +159,31 @@ export const getGameCategoryLabel = (booking, allBookings = []) => {
   return `${cat} Players Category`;
 };
 
+// Formats input text into sentence case: first letter of each sentence is capitalized,
+// while all other letters are forced to lowercase (even if Caps Lock was active).
+export const formatSentenceCaseInput = (raw) => {
+  if (!raw) return '';
+  const str = String(raw);
+  let result = '';
+  let capitalizeNext = true;
+
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    if (/[a-zA-Z]/.test(char)) {
+      if (capitalizeNext) {
+        result += char.toUpperCase();
+        capitalizeNext = false;
+      } else {
+        result += char.toLowerCase();
+      }
+    } else {
+      result += char;
+      if (char === '.' || char === '!' || char === '?' || char === '\n') {
+        capitalizeNext = true;
+      }
+    }
+  }
+
+  return result;
+};
+

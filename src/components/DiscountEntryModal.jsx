@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Sparkles, ShieldAlert, CheckCircle2, Info, Camera, Layers, Check, Edit3 } from 'lucide-react';
+import { formatSentenceCaseInput } from '../utils/pricingEngine';
 
 const ET_ROOM_OPTIONS = [
   "Professor X's Lab",
@@ -59,7 +60,7 @@ export const formatSingleDiscountNote = (entry, forPreview = false) => {
 
   const attachDetails = (baseText) => {
     let res = baseText;
-    if (!isCompl) {
+    if (!isCompl && !reason.includes('staff')) {
       if (entry.customerName && entry.customerName.trim()) res += `\nCustomer Name: ${entry.customerName.trim()}`;
       if (entry.phone && entry.phone.trim()) res += `\nMobile Number: ${entry.phone.trim()}`;
     }
@@ -111,6 +112,21 @@ export const formatSingleDiscountNote = (entry, forPreview = false) => {
       text = `Given ${pct}% discount to ${playerWording} for ${duration} game as it was a corporate package${ref ? ` and as per ${ref} reference.` : '.'}`;
     } else if (reason.includes('high price') || reason === 'going back due to high prices') {
       text = `Given ${pct}% discount to ${playerWording} for ${duration} game as they were going back due to high prices${ref ? ` and as per ${ref} reference.` : '.'}`;
+    } else if (reason.includes('staff')) {
+      const scenario = entry.staffGameScenario;
+      const staffWording = paxNum === 1 ? '1 staff' : `${paxNum} staff`;
+      if (scenario === 'custom_scenario' && (entry.staffGameCustomReason || entry.customFullNote)) {
+        const customReasonText = (entry.staffGameCustomReason || entry.customFullNote).trim();
+        if (customReasonText.toLowerCase().startsWith('today') || customReasonText.toLowerCase().startsWith('given')) {
+          text = `${customReasonText}${ref ? ` and as per ${ref} reference.` : '.'}`;
+        } else {
+          text = `Today ${staffWording} played ${duration} game as ${customReasonText}${ref ? ` and as per ${ref} reference.` : '.'}`;
+        }
+      } else if (scenario === 'staff_training' || (entry.customFullNote || '').toLowerCase().includes('training') || (entry.customFullNote || '').toLowerCase().includes('test')) {
+        text = `Today ${staffWording} played ${duration} game for staff training / game testing${ref ? ` and as per ${ref} reference.` : '.'}`;
+      } else {
+        text = `Today ${staffWording} joined ${duration} game as customer had requested as there were fewer players${ref ? ` and as per ${ref} reference.` : '.'}`;
+      }
     } else {
       text = `Given ${pct}% discount to ${playerWording} for ${duration} game as they were ${reason}${ref ? ` and as per ${ref} reference.` : '.'}`;
     }
@@ -156,6 +172,21 @@ export const formatSingleDiscountNote = (entry, forPreview = false) => {
         text = `Given ${pct}% discount to ${rPlayerWording} for ${roomClean} as it was a corporate package${ref ? ` and as per ${ref} reference.` : '.'}`;
       } else if (reason.includes('high price') || reason === 'going back due to high prices') {
         text = `Given ${pct}% discount to ${rPlayerWording} for ${roomClean} as they were going back due to high prices${ref ? ` and as per ${ref} reference.` : '.'}`;
+      } else if (reason.includes('staff')) {
+        const scenario = entry.staffGameScenario;
+        const staffWording = roomPax === 1 ? '1 staff' : `${roomPax} staff`;
+        if (scenario === 'custom_scenario' && (entry.staffGameCustomReason || entry.customFullNote)) {
+          const customReasonText = (entry.staffGameCustomReason || entry.customFullNote).trim();
+          if (customReasonText.toLowerCase().startsWith('today') || customReasonText.toLowerCase().startsWith('given')) {
+            text = `${customReasonText}${ref ? ` and as per ${ref} reference.` : '.'}`;
+          } else {
+            text = `Today ${staffWording} played ${roomClean} as ${customReasonText}${ref ? ` and as per ${ref} reference.` : '.'}`;
+          }
+        } else if (scenario === 'staff_training' || (entry.customFullNote || '').toLowerCase().includes('training') || (entry.customFullNote || '').toLowerCase().includes('test')) {
+          text = `Today ${staffWording} played ${roomClean} for staff training / game testing${ref ? ` and as per ${ref} reference.` : '.'}`;
+        } else {
+          text = `Today ${staffWording} joined ${roomClean} as customer had requested as there were fewer players${ref ? ` and as per ${ref} reference.` : '.'}`;
+        }
       } else {
         text = `Given ${pct}% discount to ${rPlayerWording} for ${roomClean} as they were ${reason}${ref ? ` and as per ${ref} reference.` : '.'}`;
       }
@@ -188,6 +219,8 @@ export const DiscountEntryModal = ({
   const [percentage, setPercentage] = useState('30');
   const [customPct, setCustomPct] = useState('25');
   const [reason, setReason] = useState('cross promotion coupon');
+  const [staffGameScenario, setStaffGameScenario] = useState('customer_request');
+  const [staffGameCustomReason, setStaffGameCustomReason] = useState('');
   const [reference, setReference] = useState('Nayeem Sir');
   const [customFullNote, setCustomFullNote] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -210,6 +243,8 @@ export const DiscountEntryModal = ({
       setPercentage(initialEntry.percentage !== undefined ? String(initialEntry.percentage) : '30');
       setCustomPct(initialEntry.customPct !== undefined ? String(initialEntry.customPct) : '25');
       setReason(initialEntry.reason || 'cross promotion coupon');
+      setStaffGameScenario(initialEntry.staffGameScenario || 'customer_request');
+      setStaffGameCustomReason(initialEntry.staffGameCustomReason || '');
       setReference(initialEntry.reference || 'Nayeem Sir');
       setCustomFullNote(initialEntry.customFullNote || '');
       setCustomerName(initialEntry.customerName || '');
@@ -229,6 +264,8 @@ export const DiscountEntryModal = ({
       setPercentage('30');
       setCustomPct('25');
       setReason('cross promotion coupon');
+      setStaffGameScenario('customer_request');
+      setStaffGameCustomReason('');
       setReference('Nayeem Sir');
       setCustomFullNote('');
       setCustomerName('');
@@ -268,6 +305,11 @@ export const DiscountEntryModal = ({
     } else if (newReason === 'kids under 5 years') {
       setPercentage('complementary');
       setReference(prev => (prev && prev !== '' ? prev : 'Nayeem Sir'));
+    } else if (newReason === 'staff game') {
+      setPercentage('100');
+      setReference(prev => (prev && prev !== '' ? prev : 'Nayeem Sir'));
+      setStaffGameScenario('customer_request');
+      setStaffGameCustomReason('');
     } else if (newReason === 'district app' || newReason === 'website booking' || newReason === 'activity kids' || newReason === 'custom') {
       setReference('');
     }
@@ -285,7 +327,8 @@ export const DiscountEntryModal = ({
 
   const isSplitGroupValid = isGroupSizeSplit && selectedRooms.length > 1 && totalSplitPax > 0;
   const hasGroupSize = Boolean(groupSizeVal && parseInt(groupSizeVal, 10) > 0) || isSplitGroupValid;
-  const canSubmit = !isMissingRef && hasGroupSize;
+  const isStaffGameCustomValid = !(reason === 'staff game' && staffGameScenario === 'custom_scenario') || staffGameCustomReason.trim().length > 0;
+  const canSubmit = !isMissingRef && hasGroupSize && isStaffGameCustomValid;
 
   const effectiveTotalPax = groupSizeVal ? (parseInt(groupSizeVal, 10) || 1) : (totalSplitPax || 1);
 
@@ -300,6 +343,8 @@ export const DiscountEntryModal = ({
     percentage,
     customPct: parseInt(customPct, 10) || 0,
     reason,
+    staffGameScenario,
+    staffGameCustomReason: (reason === 'staff game' && staffGameScenario === 'custom_scenario') ? staffGameCustomReason.trim() : null,
     reference: isCustomReason || isOnlineReason ? '' : (reference || 'Nayeem Sir'),
     customFullNote,
     customerName,
@@ -316,6 +361,10 @@ export const DiscountEntryModal = ({
     }
     if (isMissingRef) {
       alert('Reference Person (Khaja Sir or Nayeem Sir) is strictly mandatory for this discount!');
+      return;
+    }
+    if (reason === 'staff game' && staffGameScenario === 'custom_scenario' && !staffGameCustomReason.trim()) {
+      alert('Please write the custom staff scenario!');
       return;
     }
     if (isCustomReason && !customFullNote.trim()) {
@@ -515,10 +564,75 @@ export const DiscountEntryModal = ({
                 <option value="website booking">Website Booking (Razorpay)</option>
                 <option value="activity kids">Activity Kids</option>
                 <option value="kids under 5 years">Kids Under 5 Years (Complementary)</option>
+                <option value="staff game">Staff Game / Staff Discount (100% OFF)</option>
                 <option value="custom">Custom Reason</option>
               </select>
             </div>
           </div>
+
+          {/* Staff Game Scenario Selector */}
+          {reason === 'staff game' && (
+            <div className="p-3.5 bg-indigo-50 border border-indigo-200 rounded-2xl space-y-2.5">
+              <span className="text-xs font-black text-indigo-950 uppercase tracking-wide block">
+                Select Staff Game Scenario (100% OFF):
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStaffGameScenario('customer_request')}
+                  className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                    staffGameScenario === 'customer_request'
+                      ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm font-bold'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-indigo-50'
+                  }`}
+                >
+                  <div className="font-black">👥 Customer Requested</div>
+                  <div className="text-[10px] opacity-90 mt-0.5">Staff joined group as player count was lesser</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStaffGameScenario('staff_training')}
+                  className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                    staffGameScenario === 'staff_training'
+                      ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm font-bold'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-indigo-50'
+                  }`}
+                >
+                  <div className="font-black">🎓 Staff Training</div>
+                  <div className="text-[10px] opacity-90 mt-0.5">Staff playing to learn, test, or master game</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStaffGameScenario('custom_scenario')}
+                  className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                    staffGameScenario === 'custom_scenario'
+                      ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm font-bold'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-indigo-50'
+                  }`}
+                >
+                  <div className="font-black">✏️ Custom Scenario</div>
+                  <div className="text-[10px] opacity-90 mt-0.5">Write your own custom staff scenario</div>
+                </button>
+              </div>
+
+              {/* Custom Scenario Text Box */}
+              {staffGameScenario === 'custom_scenario' && (
+                <div className="pt-1">
+                  <label className="text-xs font-bold text-indigo-950 block mb-1 uppercase tracking-wider">
+                    Write Custom Staff Scenario <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. VIP guest companion, laser tag sensor testing, tournament dry run..."
+                    value={staffGameCustomReason}
+                    onChange={(e) => setStaffGameCustomReason(formatSentenceCaseInput(e.target.value))}
+                    className="w-full text-xs font-semibold p-2.5 rounded-xl border border-indigo-300 bg-white focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Customer Details (Optional) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -602,7 +716,7 @@ export const DiscountEntryModal = ({
                 rows={3}
                 placeholder="e.g. Given special discount as requested by customer group..."
                 value={customFullNote}
-                onChange={(e) => setCustomFullNote(e.target.value)}
+                onChange={(e) => setCustomFullNote(formatSentenceCaseInput(e.target.value))}
                 className="w-full text-xs font-medium p-3 rounded-xl border border-indigo-200 bg-indigo-50/20 focus:ring-2 focus:ring-indigo-500"
               />
             </div>
@@ -621,19 +735,60 @@ export const DiscountEntryModal = ({
                   </span>
                 )}
               </div>
-              <select
-                disabled={isOnlineReason}
-                value={reference || 'Nayeem Sir'}
-                onChange={(e) => setReference(e.target.value)}
-                className={`w-full text-xs font-bold p-2.5 rounded-xl border transition-all ${
-                  isMissingRef
-                    ? 'border-red-500 bg-red-50/50 text-red-900 focus:ring-2 focus:ring-red-500'
-                    : 'border-slate-200 bg-slate-50'
-                }`}
-              >
-                <option value="Nayeem Sir">Nayeem Sir (Default)</option>
-                <option value="Khaja Sir">Khaja Sir</option>
-              </select>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  disabled={isOnlineReason}
+                  onClick={() => setReference('Nayeem Sir')}
+                  className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all ${
+                    reference === 'Nayeem Sir'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-extrabold'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                  }`}
+                >
+                  Nayeem Sir (Default)
+                </button>
+                <button
+                  type="button"
+                  disabled={isOnlineReason}
+                  onClick={() => setReference('Khaja Sir')}
+                  className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all ${
+                    reference === 'Khaja Sir'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-extrabold'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                  }`}
+                >
+                  Khaja Sir
+                </button>
+                <button
+                  type="button"
+                  disabled={isOnlineReason}
+                  onClick={() => {
+                    if (reference === 'Nayeem Sir' || reference === 'Khaja Sir') {
+                      setReference('');
+                    }
+                  }}
+                  className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all ${
+                    reference !== 'Nayeem Sir' && reference !== 'Khaja Sir'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-extrabold'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                  }`}
+                >
+                  ✏️ Custom Ref
+                </button>
+              </div>
+
+              {reference !== 'Nayeem Sir' && reference !== 'Khaja Sir' && (
+                <div className="pt-2">
+                  <input
+                    type="text"
+                    placeholder="Enter reference person name (e.g. Director, Manager Name)..."
+                    value={reference}
+                    onChange={(e) => setReference(formatSentenceCaseInput(e.target.value))}
+                    className="w-full text-xs font-bold p-2.5 rounded-xl border border-indigo-300 bg-white focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                  />
+                </div>
+              )}
             </div>
           )}
 

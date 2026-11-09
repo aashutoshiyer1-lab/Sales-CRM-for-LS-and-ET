@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { VENUES, VENUE_DETAILS, PAYMENT_METHODS, OFFERS, REFERENCES, getOperatingHours, isWeekend } from '../config/venueData';
-import { calculatePricing } from '../utils/pricingEngine';
+import { calculatePricing, formatSentenceCaseInput } from '../utils/pricingEngine';
 import { 
   X, 
   User, 
@@ -22,7 +22,8 @@ import {
   Gift,
   Zap,
   Flame,
-  Camera
+  Camera,
+  UserCheck
 } from 'lucide-react';
 
 export const BookingModal = ({ 
@@ -51,6 +52,8 @@ export const BookingModal = ({
   const [categoryOverride, setCategoryOverride] = useState('');
   const [showComplimentaryCategoryConfirm, setShowComplimentaryCategoryConfirm] = useState(false);
   const [isCustomTimeMode, setIsCustomTimeMode] = useState(false);
+  const [staffGameScenario, setStaffGameScenario] = useState('customer_request');
+  const [staffGameCustomReason, setStaffGameCustomReason] = useState('');
   
   const [isPendingBooking, setIsPendingBooking] = useState(false);
 
@@ -114,12 +117,14 @@ export const BookingModal = ({
       setOfferId(editingBooking.offerId || 'none');
       setCustomDiscountReason(editingBooking.customDiscountReason || (editingBooking.offerId === 'custom_discount' ? editingBooking.offerName : '') || '');
       setCustomDiscountPercentage(editingBooking.discountPercentage !== undefined ? String(editingBooking.discountPercentage) : '50');
-      setCustomNote(editingBooking.customNote || editingBooking.customDiscountReason || '');
+      setCustomNote(editingBooking.customNote || '');
       setReferencePerson(editingBooking.referencePerson || 'Nayeem Sir');
       setCategoryOverride(editingBooking.categoryOverride || '');
       setIsPendingBooking(editingBooking.status === 'Pending');
       setShowComplimentaryCategoryConfirm(false);
       setIsCustomTimeMode(Boolean(editingBooking.timeSlot && !dynamicTimeSlotOptions.some(s => s.value === editingBooking.timeSlot)));
+      setStaffGameScenario(editingBooking.staffGameScenario || 'customer_request');
+      setStaffGameCustomReason(editingBooking.staffGameCustomReason || '');
       
       const prevPay = editingBooking.payments || {};
       setPayments({
@@ -149,6 +154,8 @@ export const BookingModal = ({
       setIsPendingBooking(false);
       setShowComplimentaryCategoryConfirm(false);
       setIsCustomTimeMode(false);
+      setStaffGameScenario('customer_request');
+      setStaffGameCustomReason('');
       setPayments({
         Cash: '',
         Card: '',
@@ -200,9 +207,19 @@ export const BookingModal = ({
   });
 
   const isComplimentary = offerId === 'complimentary';
+  const isStaffGame = offerId === 'staff_game';
+  const isFreeGame = isComplimentary || isStaffGame;
   const finalTotalAmount = pricingInfo.totalAmount;
 
-  const currentEscapeCategory = categoryOverride || (Number(paxCount) >= 7 ? '7+' : Number(paxCount) >= 4 ? '4-6' : (offerId === 'complimentary' ? '4-6' : '2-3'));
+  const currentEscapeCategory = categoryOverride || (
+    Number(paxCount) >= 7 
+      ? '7+' 
+      : Number(paxCount) >= 4 
+        ? '4-6' 
+        : Number(paxCount) >= 2 
+          ? '2-3' 
+          : (offerId === 'complimentary' ? '4-6' : '2-3')
+  );
 
   const handleOfferChange = (newOfferId) => {
     setOfferId(newOfferId);
@@ -211,6 +228,10 @@ export const BookingModal = ({
         setCustomDiscountPercentage('50');
       }
       setReferencePerson('');
+    } else if (newOfferId === 'staff_game') {
+      setReferencePerson(prev => (prev && prev.trim() ? prev : 'Nayeem Sir'));
+      setStaffGameScenario('customer_request');
+      setStaffGameCustomReason('');
     }
     const discountOffers = [
       'high_price_retention',
@@ -219,7 +240,8 @@ export const BookingModal = ({
       'second_game',
       'cross_promotion',
       'cross_promotion_brochure',
-      'complimentary'
+      'complimentary',
+      'staff_game'
     ];
     if (discountOffers.includes(newOfferId)) {
       setReferencePerson(prev => (prev && prev.trim() ? prev : 'Nayeem Sir'));
@@ -227,12 +249,13 @@ export const BookingModal = ({
   };
 
   const splitTotal = Object.values(payments).reduce((sum, val) => sum + (parseInt(val, 10) || 0), 0);
-  const isExactMatch = isComplimentary || (finalTotalAmount === 0 && splitTotal === 0) || (finalTotalAmount > 0 && splitTotal === finalTotalAmount);
+  const isExactMatch = isFreeGame || (finalTotalAmount === 0 && splitTotal === 0) || (finalTotalAmount > 0 && splitTotal === finalTotalAmount);
   const remainingAmount = finalTotalAmount - splitTotal;
 
   const isCustomOffer = offerId === 'custom_discount';
   const isCustomValid = !isCustomOffer || (customDiscountReason.trim().length > 0 && customDiscountPercentage !== '');
-  const canSubmit = gameName && paxCount && customerName && phone && isCustomValid && (isExactMatch || isPendingBooking);
+  const isStaffGameCustomValid = !(isStaffGame && staffGameScenario === 'custom_scenario') || staffGameCustomReason.trim().length > 0;
+  const canSubmit = gameName && paxCount && customerName && phone && isCustomValid && isStaffGameCustomValid && (isExactMatch || isPendingBooking);
 
   const handleAutoFillSplit = (method) => {
     setPayments({
@@ -306,9 +329,17 @@ export const BookingModal = ({
       timeSlot,
       rateMode,
       offerId: pricingInfo.offerId,
-      offerName: offerId === 'custom_discount' ? (customDiscountReason.trim() || 'Custom Discount') : pricingInfo.offerName,
-      customDiscountReason: offerId === 'custom_discount' ? customDiscountReason.trim() : (customNote.trim() || ''),
-      customNote: (customNote || customDiscountReason || '').trim(),
+      offerName: isStaffGame
+        ? (staffGameScenario === 'custom_scenario'
+            ? (staffGameCustomReason.trim() ? `Staff Game (${staffGameCustomReason.trim()} - 100% OFF)` : 'Staff Game (Custom Scenario - 100% OFF)')
+            : staffGameScenario === 'staff_training'
+              ? 'Staff Game (Staff Training - 100% OFF)'
+              : 'Staff Game (Customer Requested - 100% OFF)')
+        : offerId === 'custom_discount' ? (customDiscountReason.trim() || 'Custom Discount') : pricingInfo.offerName,
+      staffGameScenario: isStaffGame ? staffGameScenario : null,
+      staffGameCustomReason: isStaffGame && staffGameScenario === 'custom_scenario' ? staffGameCustomReason.trim() : null,
+      customDiscountReason: offerId === 'custom_discount' ? customDiscountReason.trim() : '',
+      customNote: customNote.trim(),
       discountPercentage: pricingInfo.discountPercentage,
       discountAmount: pricingInfo.discountAmount,
       referencePerson: (
@@ -657,6 +688,159 @@ export const BookingModal = ({
               ))}
             </select>
 
+            {/* Staff Game Scenario Selection (100% OFF) */}
+            {offerId === 'staff_game' && (
+              <div className="pt-3 space-y-3 border-t border-slate-200 mt-2 bg-indigo-50/80 p-3.5 rounded-2xl border border-indigo-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-indigo-950 uppercase tracking-wide flex items-center gap-1.5">
+                    <UserCheck className="w-4 h-4 text-indigo-600" />
+                    Select Staff Game Scenario (100% OFF)
+                  </span>
+                  <span className="text-[10px] font-mono font-black text-indigo-800 bg-white px-2 py-0.5 rounded border border-indigo-300">
+                    ₹0 Charged • 100% Free
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStaffGameScenario('customer_request');
+                    }}
+                    className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                      staffGameScenario === 'customer_request'
+                        ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm font-bold'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-indigo-50 font-medium'
+                    }`}
+                  >
+                    <div className="font-black">👥 Customer Requested</div>
+                    <div className="text-[10px] opacity-90 mt-0.5">Staff joined group as player count was lesser</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStaffGameScenario('staff_training');
+                    }}
+                    className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                      staffGameScenario === 'staff_training'
+                        ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm font-bold'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-indigo-50 font-medium'
+                    }`}
+                  >
+                    <div className="font-black">🎓 Staff Training</div>
+                    <div className="text-[10px] opacity-90 mt-0.5">Staff playing to learn, test, or master game</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStaffGameScenario('custom_scenario');
+                    }}
+                    className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                      staffGameScenario === 'custom_scenario'
+                        ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm font-bold'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-indigo-50 font-medium'
+                    }`}
+                  >
+                    <div className="font-black">✏️ Custom Scenario</div>
+                    <div className="text-[10px] opacity-90 mt-0.5">Write your own custom staff scenario</div>
+                  </button>
+                </div>
+
+                {/* Custom Scenario Text Box */}
+                {staffGameScenario === 'custom_scenario' && (
+                  <div className="pt-1">
+                    <label className="block text-xs font-bold text-indigo-950 mb-1.5 uppercase tracking-wider">
+                      Write Custom Staff Scenario <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. VIP guest companion, laser tag sensor testing, tournament dry run..."
+                      value={staffGameCustomReason}
+                      onChange={(e) => setStaffGameCustomReason(formatSentenceCaseInput(e.target.value))}
+                      className="w-full px-3 py-2.5 rounded-xl bg-white border border-indigo-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 focus:outline-none font-semibold shadow-sm"
+                    />
+                  </div>
+                )}
+
+                {/* Direct Reference Selector for Staff Game */}
+                <div className="pt-2 border-t border-indigo-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                      Whose Reference Approved This Staff Game?
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-indigo-800 bg-white px-2 py-0.5 rounded border border-indigo-300">
+                      Ref: {referencePerson || 'Nayeem Sir'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReferencePerson('Nayeem Sir')}
+                      className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all ${
+                        referencePerson === 'Nayeem Sir'
+                          ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                          : 'bg-white text-indigo-950 hover:bg-indigo-100 border border-indigo-300'
+                      }`}
+                    >
+                      Nayeem Sir (Default)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setReferencePerson('Khaja Sir')}
+                      className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all ${
+                        referencePerson === 'Khaja Sir'
+                          ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                          : 'bg-white text-indigo-950 hover:bg-indigo-100 border border-indigo-300'
+                      }`}
+                    >
+                      Khaja Sir
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (referencePerson === 'Nayeem Sir' || referencePerson === 'Khaja Sir') {
+                          setReferencePerson('');
+                        }
+                      }}
+                      className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all ${
+                        referencePerson !== 'Nayeem Sir' && referencePerson !== 'Khaja Sir'
+                          ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                          : 'bg-white text-indigo-950 hover:bg-indigo-100 border border-indigo-300'
+                      }`}
+                    >
+                      ✏️ Custom Ref
+                    </button>
+                  </div>
+
+                  {referencePerson !== 'Nayeem Sir' && referencePerson !== 'Khaja Sir' && (
+                    <div className="pt-1">
+                      <input
+                        type="text"
+                        placeholder="Type reference person name (e.g. Director, Manager Name)..."
+                        value={referencePerson}
+                        onChange={(e) => setReferencePerson(formatSentenceCaseInput(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-indigo-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-600 focus:outline-none font-semibold shadow-sm"
+                      />
+                    </div>
+                  )}
+
+                  {referencePerson === 'Khaja Sir' && (
+                    <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-center gap-2 font-bold shadow-sm">
+                      <Camera className="w-4 h-4 text-amber-800 flex-shrink-0" />
+                      <span>📸 Mandatory: Take screenshot of Khaja Sir approval and attach in closing message.</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Custom Discount Reason and Percentage */}
             {offerId === 'custom_discount' && (
               <div className="pt-3 space-y-3 border-t border-slate-200 mt-2">
@@ -669,7 +853,7 @@ export const BookingModal = ({
                     required
                     placeholder="Enter custom reason (e.g. Regular customer, Group negotiation, etc.)"
                     value={customDiscountReason}
-                    onChange={(e) => setCustomDiscountReason(e.target.value)}
+                    onChange={(e) => setCustomDiscountReason(formatSentenceCaseInput(e.target.value))}
                     className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:ring-2 focus:ring-amber-100 focus:outline-none font-semibold shadow-sm"
                   />
                 </div>
@@ -728,20 +912,21 @@ export const BookingModal = ({
                   type="text"
                   placeholder="e.g. 2 players website booking + 1 player cash add-on, special customer note..."
                   value={customNote}
-                  onChange={(e) => setCustomNote(e.target.value)}
+                  onChange={(e) => setCustomNote(formatSentenceCaseInput(e.target.value))}
                   className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:ring-2 focus:ring-amber-100 focus:outline-none font-semibold shadow-sm"
                 />
               </div>
             )}
           </div>
 
-          {/* Reference Approval Selector when discount or special offer selected — NOT for custom notes or custom reason */}
+          {/* Reference Approval Selector when discount or special offer selected — NOT for custom notes, custom reason, or staff game (which has its own dedicated selector) */}
           {(
             offerId !== 'none' && 
             offerId !== 'district_app' && 
             offerId !== 'website_booking' && 
             offerId !== 'activity_kids' && 
-            offerId !== 'custom_discount'
+            offerId !== 'custom_discount' &&
+            offerId !== 'staff_game'
           ) && (
             <div className="p-4 rounded-2xl bg-amber-100/80 border border-amber-300 space-y-2.5 text-xs sm:text-sm">
               <div className="flex items-center justify-between font-bold text-amber-900">
@@ -749,23 +934,61 @@ export const BookingModal = ({
                   <ShieldCheck className="w-4 h-4 text-amber-700" />
                   Whose Reference Approved This Discount? (Default: Nayeem Sir)
                 </span>
+                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-200 border border-amber-400 text-amber-950">
+                  Ref: {referencePerson || 'Nayeem Sir'}
+                </span>
               </div>
-              <div className="grid grid-cols-2 gap-2.5 pt-1">
-                {REFERENCES.map((ref) => (
-                  <button
-                    key={ref}
-                    type="button"
-                    onClick={() => setReferencePerson(ref)}
-                    className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold font-mono transition-all ${
-                      (referencePerson || 'Nayeem Sir') === ref
-                        ? 'bg-amber-600 text-white shadow-md font-extrabold scale-95'
-                        : 'bg-white text-amber-900 hover:bg-amber-200 border border-amber-300'
-                    }`}
-                  >
-                    {ref} {ref === 'Nayeem Sir' ? '(Default)' : ''}
-                  </button>
-                ))}
+              <div className="grid grid-cols-3 gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setReferencePerson('Nayeem Sir')}
+                  className={`py-2 px-3 rounded-xl text-xs sm:text-sm font-bold font-mono transition-all ${
+                    referencePerson === 'Nayeem Sir'
+                      ? 'bg-amber-600 text-white shadow-md font-extrabold scale-95'
+                      : 'bg-white text-amber-900 hover:bg-amber-200 border border-amber-300'
+                  }`}
+                >
+                  Nayeem Sir (Default)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReferencePerson('Khaja Sir')}
+                  className={`py-2 px-3 rounded-xl text-xs sm:text-sm font-bold font-mono transition-all ${
+                    referencePerson === 'Khaja Sir'
+                      ? 'bg-amber-600 text-white shadow-md font-extrabold scale-95'
+                      : 'bg-white text-amber-900 hover:bg-amber-200 border border-amber-300'
+                  }`}
+                >
+                  Khaja Sir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (referencePerson === 'Nayeem Sir' || referencePerson === 'Khaja Sir') {
+                      setReferencePerson('');
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl text-xs sm:text-sm font-bold font-mono transition-all ${
+                    referencePerson !== 'Nayeem Sir' && referencePerson !== 'Khaja Sir'
+                      ? 'bg-amber-600 text-white shadow-md font-extrabold scale-95'
+                      : 'bg-white text-amber-900 hover:bg-amber-200 border border-amber-300'
+                  }`}
+                >
+                  ✏️ Custom Ref
+                </button>
               </div>
+
+              {referencePerson !== 'Nayeem Sir' && referencePerson !== 'Khaja Sir' && (
+                <div className="pt-1">
+                  <input
+                    type="text"
+                    placeholder="Enter reference person name (e.g. Director, Manager Name)..."
+                    value={referencePerson}
+                    onChange={(e) => setReferencePerson(formatSentenceCaseInput(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-400 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-amber-600 focus:outline-none font-semibold shadow-sm"
+                  />
+                </div>
+              )}
 
               {referencePerson === 'Khaja Sir' && (
                 <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs sm:text-sm text-amber-950 flex items-center gap-2 font-bold shadow-sm">
@@ -811,7 +1034,7 @@ export const BookingModal = ({
           </div>
 
           {/* Pending Option */}
-          {!isComplimentary && (
+          {!isFreeGame && (
             <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-100/80 border border-amber-300 flex items-center justify-between">
               <label className="flex items-center gap-3 cursor-pointer text-xs sm:text-sm font-bold text-amber-950">
                 <input
@@ -835,7 +1058,7 @@ export const BookingModal = ({
                 <CreditCard className="w-4 h-4 text-cyan-700" />
                 <span>Split Payment Entry</span>
               </div>
-              {!isComplimentary && (
+              {!isFreeGame && (
                 <div className="text-xs text-slate-600 font-semibold flex items-center gap-1 flex-wrap">
                   <span>Auto Fill:</span>
                   {PAYMENT_METHODS.map(m => (
@@ -862,9 +1085,9 @@ export const BookingModal = ({
                   <input
                     type="number"
                     min="0"
-                    disabled={isComplimentary}
-                    placeholder={isComplimentary ? '₹0 (Free)' : 'Enter amount'}
-                    value={isComplimentary ? '' : payments[method]}
+                    disabled={isFreeGame}
+                    placeholder={isFreeGame ? '₹0 (Free)' : 'Enter amount'}
+                    value={isFreeGame ? '' : payments[method]}
                     onChange={(e) => handlePaymentChange(method, e.target.value)}
                     onWheel={(e) => e.target.blur()}
                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-300 text-xs sm:text-sm font-mono font-bold text-slate-900 placeholder-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-50"
@@ -875,14 +1098,18 @@ export const BookingModal = ({
 
             {/* Verification Bar */}
             <div className={`mt-3.5 p-3.5 rounded-xl border flex items-center justify-between transition-all ${
-              isComplimentary
-                ? 'bg-purple-100 border-purple-300 text-purple-950'
-                : isExactMatch
-                  ? 'bg-emerald-100 border-emerald-300 text-emerald-950'
-                  : 'bg-amber-100 border-amber-300 text-amber-950'
+              isStaffGame
+                ? 'bg-indigo-100 border-indigo-300 text-indigo-950'
+                : isComplimentary
+                  ? 'bg-purple-100 border-purple-300 text-purple-950'
+                  : isExactMatch
+                    ? 'bg-emerald-100 border-emerald-300 text-emerald-950'
+                    : 'bg-amber-100 border-amber-300 text-amber-950'
             }`}>
               <div className="flex items-center gap-2.5">
-                {isComplimentary ? (
+                {isStaffGame ? (
+                  <UserCheck className="w-5 h-5 text-indigo-700 shrink-0" />
+                ) : isComplimentary ? (
                   <Gift className="w-5 h-5 text-purple-700 shrink-0" />
                 ) : isExactMatch ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
@@ -891,15 +1118,17 @@ export const BookingModal = ({
                 )}
                 <div>
                   <div className="text-xs sm:text-sm font-extrabold font-mono">
-                    {isComplimentary
-                      ? `COMPLIMENTARY GAME (UNDER 5 YEARS) - NO PAYMENT COLLECTED${activeVenue === VENUES.ESCAPE_TIME ? ` [${currentEscapeCategory} Category]` : ''}`
-                      : isExactMatch
-                        ? 'EXACT MATCH - READY TO SAVE'
-                        : isPendingBooking
-                          ? 'ADVANCE ENTRY - PENDING PAYMENT'
-                          : remainingAmount > 0
-                            ? `UNPAID: ₹${remainingAmount.toLocaleString()}`
-                            : `OVERPAID: ₹${Math.abs(remainingAmount.toLocaleString())}`}
+                    {isStaffGame
+                      ? `STAFF GAME (100% OFF) - ₹0 PAYMENT COLLECTED${activeVenue === VENUES.ESCAPE_TIME ? ` [${currentEscapeCategory} Category]` : ''}`
+                      : isComplimentary
+                        ? `COMPLIMENTARY GAME (UNDER 5 YEARS) - NO PAYMENT COLLECTED${activeVenue === VENUES.ESCAPE_TIME ? ` [${currentEscapeCategory} Category]` : ''}`
+                        : isExactMatch
+                          ? 'EXACT MATCH - READY TO SAVE'
+                          : isPendingBooking
+                            ? 'ADVANCE ENTRY - PENDING PAYMENT'
+                            : remainingAmount > 0
+                              ? `UNPAID: ₹${remainingAmount.toLocaleString()}`
+                              : `OVERPAID: ₹${Math.abs(remainingAmount.toLocaleString())}`}
                   </div>
                   <div className="text-[10px] sm:text-xs text-slate-700 font-mono font-semibold mt-0.5">
                     Split Paid: ₹{splitTotal.toLocaleString()} / Target Total: ₹{finalTotalAmount.toLocaleString()}
@@ -975,16 +1204,18 @@ export const BookingModal = ({
               disabled={!canSubmit || submitting}
               className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold text-white transition-all shadow-md flex items-center gap-2 ${
                 canSubmit && !submitting
-                  ? isComplimentary
-                    ? 'bg-purple-600 hover:bg-purple-700 active:scale-95'
-                    : isPendingBooking
-                      ? 'bg-amber-600 hover:bg-amber-700 active:scale-95'
-                      : 'bg-emerald-600 hover:bg-emerald-700 active:scale-95'
+                  ? isStaffGame
+                    ? 'bg-indigo-600 hover:bg-indigo-700 active:scale-95'
+                    : isComplimentary
+                      ? 'bg-purple-600 hover:bg-purple-700 active:scale-95'
+                      : isPendingBooking
+                        ? 'bg-amber-600 hover:bg-amber-700 active:scale-95'
+                        : 'bg-emerald-600 hover:bg-emerald-700 active:scale-95'
                   : 'bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-400'
               }`}
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>{isComplimentary ? 'Submit Complimentary Game' : isPendingBooking ? 'Save Pending Game' : editingBooking ? 'Update Game Entry' : 'Submit & Save Game'}</span>
+              <span>{isStaffGame ? 'Submit Staff Game (100% OFF)' : isComplimentary ? 'Submit Complimentary Game' : isPendingBooking ? 'Save Pending Game' : editingBooking ? 'Update Game Entry' : 'Submit & Save Game'}</span>
             </button>
           </div>
 

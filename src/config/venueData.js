@@ -25,6 +25,7 @@ export const OFFERS = [
   { id: 'activity_kids', name: 'Activity Kids', percentage: 0 },
   { id: 'custom_discount', name: 'Custom Reason Discount (Custom %)', percentage: 0 },
   { id: 'complimentary', name: 'Complimentary Game (Kids Under 5 Years - 100% OFF)', percentage: 100 },
+  { id: 'staff_game', name: 'Staff Game / Staff Discount (100% OFF)', percentage: 100 },
 ];
 
 export const REFERENCES = [

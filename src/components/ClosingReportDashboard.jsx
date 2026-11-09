@@ -22,7 +22,7 @@ import {
   Camera
 } from 'lucide-react';
 import { VENUES } from '../config/venueData';
-import { getBookingCategory, getGameCategoryLabel } from '../utils/pricingEngine';
+import { getBookingCategory, getGameCategoryLabel, formatSentenceCaseInput } from '../utils/pricingEngine';
 import { DiscountEntryModal, formatSingleDiscountNote } from './DiscountEntryModal';
 import { subscribeClosingReport, saveClosingReport } from '../config/firebase';
 
@@ -34,9 +34,25 @@ export const getInitialShiftDate = () => {
   return now.toISOString().split('T')[0];
 };
 
+export const normalizeDate = (d) => {
+  if (!d) return '';
+  const clean = String(d).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+  const parts = clean.split(/[-/]/);
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+    } else if (parts[2].length === 4) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+  }
+  return clean;
+};
+
 export const formatDateDDMMYYYY = (dateString) => {
   if (!dateString) return '';
-  const [year, month, day] = dateString.split('-');
+  const norm = normalizeDate(dateString);
+  const [year, month, day] = norm.split('-');
   return `${day}-${month}-${year}`;
 };
 
@@ -56,8 +72,8 @@ export const formatCustomNoteGrammar = (raw) => {
   // Strip common prefixes like "Note:", "note -", "Note -", "Custom Note:", etc.
   cleaned = cleaned.replace(/^(note\s*:\s*|note\s*-\s*|custom\s*note\s*:\s*|custom\s*note\s*-\s*|custom\s*reason\s*:\s*|note\s+)/i, '').trim();
   if (!cleaned) return '';
-  // Capitalize first letter
-  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  // Enforce proper sentence case: first letter capital, rest lowercase even if caps lock was on
+  cleaned = formatSentenceCaseInput(cleaned);
   // Ensure closing punctuation if missing
   if (!/[.!?]$/.test(cleaned)) {
     cleaned += '.';
@@ -77,7 +93,9 @@ export const ClosingReportDashboard = ({
   manualDiscounts = [], 
   onAddManualDiscount, 
   onDeleteManualDiscount, 
-  onEditBooking 
+  onEditBooking,
+  onDeleteBooking,
+  onUpdateBooking
 }) => {
   const initialDate = useMemo(() => getInitialShiftDate(), []);
   const [shiftDate, setShiftDate] = useState(initialDate);
@@ -100,9 +118,10 @@ export const ClosingReportDashboard = ({
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
   const [editingDiscountEntry, setEditingDiscountEntry] = useState(null);
 
-  // Shift specific manual discounts
+  // Shift specific manual discounts with robust date normalization
   const shiftManualDiscounts = useMemo(() => {
-    return (manualDiscounts || []).filter(d => !d.date || d.date === shiftDate);
+    const targetDate = normalizeDate(shiftDate);
+    return (manualDiscounts || []).filter(d => !d.date || normalizeDate(d.date) === targetDate);
   }, [manualDiscounts, shiftDate]);
 
   // Print Modals State
@@ -138,6 +157,17 @@ export const ClosingReportDashboard = ({
   const [customReportText, setCustomReportText] = useState(() => initialCached?.customReportText || '');
   const [isManualEditMode, setIsManualEditMode] = useState(() => Boolean(initialCached?.isManualEditMode));
 
+  // Custom overrides for individual notes (edit note capability)
+  const [noteCustomOverrides, setNoteCustomOverrides] = useState(() => initialCached?.noteCustomOverrides || {});
+  // Deleted note IDs (delete note capability)
+  const [deletedNoteIds, setDeletedNoteIds] = useState(() => initialCached?.deletedNoteIds || []);
+
+  // Modal states for editing note & deleting note
+  const [editingNoteItem, setEditingNoteItem] = useState(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
+  const [deletingNoteItem, setDeletingNoteItem] = useState(null);
+  const [notesFilterTab, setNotesFilterTab] = useState('all');
+
   // Ref to hold current state snapshot for debounced RTDB persistence
   const closingDataRef = useRef({
     excessAmounts,
@@ -146,7 +176,9 @@ export const ClosingReportDashboard = ({
     selectedStaffOption,
     customStaffName,
     isManualEditMode,
-    customReportText
+    customReportText,
+    noteCustomOverrides,
+    deletedNoteIds
   });
 
   useEffect(() => {
@@ -157,9 +189,11 @@ export const ClosingReportDashboard = ({
       selectedStaffOption,
       customStaffName,
       isManualEditMode,
-      customReportText
+      customReportText,
+      noteCustomOverrides,
+      deletedNoteIds
     };
-  }, [excessAmounts, notes, staffGamesCount, selectedStaffOption, customStaffName, isManualEditMode, customReportText]);
+  }, [excessAmounts, notes, staffGamesCount, selectedStaffOption, customStaffName, isManualEditMode, customReportText, noteCustomOverrides, deletedNoteIds]);
 
   const saveTimeoutRef = useRef(null);
 
@@ -194,12 +228,16 @@ export const ClosingReportDashboard = ({
       if (cached.customStaffName !== undefined) setCustomStaffName(cached.customStaffName);
       if (cached.isManualEditMode !== undefined) setIsManualEditMode(cached.isManualEditMode);
       if (cached.customReportText !== undefined) setCustomReportText(cached.customReportText);
+      if (cached.noteCustomOverrides) setNoteCustomOverrides(cached.noteCustomOverrides);
+      if (cached.deletedNoteIds) setDeletedNoteIds(cached.deletedNoteIds);
     } else {
       setExcessAmounts({ laser: '', lab: '', lockedIn: '', sherlock: '', spy: '' });
       setNotes({ laser: '', lab: '', lockedIn: '', sherlock: '', spy: '' });
       setStaffGamesCount(0);
       setIsManualEditMode(false);
       setCustomReportText('');
+      setNoteCustomOverrides({});
+      setDeletedNoteIds([]);
     }
 
     const unsubscribe = subscribeClosingReport(shiftDate, (remoteData) => {
@@ -225,6 +263,12 @@ export const ClosingReportDashboard = ({
       if (remoteData.customReportText !== undefined) {
         setCustomReportText(remoteData.customReportText);
       }
+      if (remoteData.noteCustomOverrides !== undefined) {
+        setNoteCustomOverrides(remoteData.noteCustomOverrides || {});
+      }
+      if (remoteData.deletedNoteIds !== undefined) {
+        setDeletedNoteIds(remoteData.deletedNoteIds || []);
+      }
     });
 
     return () => {
@@ -235,13 +279,15 @@ export const ClosingReportDashboard = ({
     };
   }, [shiftDate]);
 
-  // Filter bookings for the selected shift date
+  // Filter bookings for the selected shift date with robust date normalization
   const shiftBookings = useMemo(() => {
-    return bookings.filter(b => b.date === shiftDate && b.status !== 'Cancelled');
+    const targetDate = normalizeDate(shiftDate);
+    return bookings.filter(b => normalizeDate(b.date) === targetDate && b.status !== 'Cancelled');
   }, [bookings, shiftDate]);
 
   const cancelledAndNoShows = useMemo(() => {
-    return bookings.filter(b => b.date === shiftDate && (b.status === 'No Show' || b.status === 'Cancelled'));
+    const targetDate = normalizeDate(shiftDate);
+    return bookings.filter(b => normalizeDate(b.date) === targetDate && (b.status === 'No Show' || b.status === 'Cancelled'));
   }, [bookings, shiftDate]);
 
   // --- COMBINED SHIFT PAYMENT METHOD BREAKDOWN ---
@@ -317,10 +363,26 @@ export const ClosingReportDashboard = ({
     return b.offerId === 'complimentary' || offer.includes('complimentary');
   };
 
-  // Sessions Count: Count all real sessions (exclude only pure complimentary companion games)
+  const isStaffGame = (b) => {
+    if (!b) return false;
+    const offer = (b.offerName || '').toLowerCase();
+    return b.offerId === 'staff_game' || offer.includes('staff');
+  };
+
+  // Sessions Count: Count all real sessions (exclude complimentary & staff games)
   const laserSessions = useMemo(() => {
-    return laserBookings.filter(b => !isPureComplimentary(b)).length;
+    return laserBookings.filter(b => !isPureComplimentary(b) && !isStaffGame(b)).length;
   }, [laserBookings]);
+
+  const laserStaffBookingsCount = useMemo(() => {
+    return laserBookings
+      .filter(isStaffGame)
+      .reduce((sum, b) => sum + (Number(b.paxCount) || 1), 0);
+  }, [laserBookings]);
+
+  const effectiveStaffGamesCount = useMemo(() => {
+    return Math.max(staffGamesCount || 0, laserStaffBookingsCount || 0);
+  }, [staffGamesCount, laserStaffBookingsCount]);
 
   const laserTotalGames = useMemo(() => {
     return laserBookings.reduce((sum, b) => sum + (Number(b.paxCount) || 0), 0);
@@ -394,7 +456,7 @@ export const ClosingReportDashboard = ({
       b.gameName && b.gameName.toLowerCase().includes(roomNamePattern.toLowerCase())
     );
 
-    const sessions = roomBookings.filter(b => !isPureComplimentary(b)).length;
+    const sessions = roomBookings.filter(b => !isPureComplimentary(b) && !isStaffGame(b)).length;
     const games = roomBookings.reduce((sum, b) => sum + (Number(b.paxCount) || 0), 0);
     const sale = roomBookings.reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
     
@@ -405,30 +467,24 @@ export const ClosingReportDashboard = ({
     let bracket2to3 = 0;
     let bracket4to6 = 0;
     let bracket7plus = 0;
-    let bracket5 = 0;
-
-    // Track total players per session slot for 5-player bracket attribution
-    const sessionGroupPax = {};
-    roomBookings.forEach(b => {
-      const slotKey = b.timeSlot || b.id;
-      sessionGroupPax[slotKey] = (sessionGroupPax[slotKey] || 0) + (Number(b.paxCount) || 0);
-    });
+    let sale2to3 = 0;
+    let sale4to6 = 0;
+    let sale7plus = 0;
 
     roomBookings.forEach(b => {
       const pax = Number(b.paxCount) || 0;
       const cat = getBookingCategory(b, roomBookings);
-      const slotKey = b.timeSlot || b.id;
-      const totalSessionPax = sessionGroupPax[slotKey] || pax;
+      const amt = Number(b.totalAmount) || 0;
 
       if (cat === '2-3') {
         bracket2to3 += pax;
+        sale2to3 += amt;
       } else if (cat === '4-6') {
         bracket4to6 += pax;
-        if (pax === 5 || (totalSessionPax === 5 && (b.totalAmount || 0) > 0)) {
-          bracket5 += (pax === 5 ? pax : totalSessionPax);
-        }
+        sale4to6 += amt;
       } else if (cat === '7+') {
         bracket7plus += pax;
+        sale7plus += amt;
       }
     });
 
@@ -440,7 +496,9 @@ export const ClosingReportDashboard = ({
       bracket2to3,
       bracket4to6,
       bracket7plus,
-      bracket5,
+      sale2to3,
+      sale4to6,
+      sale7plus,
       bookings: roomBookings
     };
   };
@@ -466,10 +524,12 @@ export const ClosingReportDashboard = ({
   }, [laserTotalSale, labStats.sale, lockedInStats.sale, sherlockStats.sale, spyStats.sale]);
 
   // --- DISCOUNT APPROVAL NOTES GENERATION & BUCKET SORTING ---
-  const { khajaBucket, nayeemBucket, onlineBucket, missingRefWarnings, allDiscountNotes } = useMemo(() => {
+  const { allNotes, khajaBucket, nayeemBucket, onlineBucket, otherBucket, missingRefWarnings, allDiscountNotes } = useMemo(() => {
+    const allNotes = [];
     const khajaNotes = [];
     const nayeemNotes = [];
     const onlineNotes = [];
+    const otherNotes = [];
     const warnings = [];
 
     const roomNotesMap = {
@@ -482,11 +542,12 @@ export const ClosingReportDashboard = ({
 
     // 1. Process Bookings with Discounts, Custom Notes, or Online Payments (District / Razorpay / Activity Kids)
     const relevantBookings = shiftBookings.filter(b => 
-      b.status === 'Confirmed' && (
+      b.status !== 'Cancelled' && (
         (b.offerId && b.offerId !== 'none') ||
         Boolean(b.referencePerson) ||
         Boolean(b.customNote && b.customNote.trim()) ||
         Boolean(b.customDiscountReason && b.customDiscountReason.trim()) ||
+        Boolean(b.notes && b.notes.trim()) ||
         (b.payments && (
           Number(b.payments['Prepaid by District']) > 0 ||
           Number(b.payments['Razorpay (Website Bookings)']) > 0 ||
@@ -549,9 +610,10 @@ export const ClosingReportDashboard = ({
       const kidWording = pax === 1 ? '1 kid' : `${pax} kids`;
       const playerWording = `group of ${pax} players`;
 
-      const customNoteText = (b.customNote || b.customDiscountReason || '').trim();
+      const customNoteText = (b.customNote || b.customDiscountReason || b.notes || '').trim();
       const isCustomDiscount = b.offerId === 'custom_discount' || Boolean(b.customDiscountReason) || Boolean(customNoteText);
       const customReason = customNoteText || (b.offerName || '').trim();
+      const isStaffBooking = offer.includes('staff') || offerId === 'staff_game' || customReason.toLowerCase().includes('staff') || customNoteText.toLowerCase().includes('staff');
 
       const requiresRef = !isOnline && pct > 0 && offerId !== 'custom_discount';
 
@@ -565,6 +627,21 @@ export const ClosingReportDashboard = ({
           baseSentence = `Today we had a group of ${pax} who made booking through Website for ${laserDuration} game.`;
         } else if (isActivityKids) {
           baseSentence = `Today we had a group of ${pax} who made booking through Activity Kids for ${laserDuration} game.`;
+        } else if (isStaffBooking) {
+          const staffScenario = b.staffGameScenario;
+          const staffWording = pax === 1 ? '1 staff' : `${pax} staff`;
+          if (staffScenario === 'custom_scenario' && (b.staffGameCustomReason || b.customDiscountReason || customNoteText)) {
+            const customReasonText = (b.staffGameCustomReason || b.customDiscountReason || customNoteText).trim();
+            if (customReasonText.toLowerCase().startsWith('today') || customReasonText.toLowerCase().startsWith('given')) {
+              baseSentence = `${customReasonText}${ref ? ` and as per ${ref} reference.` : '.'}`;
+            } else {
+              baseSentence = `Today ${staffWording} played ${laserDuration} game as ${customReasonText}${ref ? ` and as per ${ref} reference.` : '.'}`;
+            }
+          } else if (staffScenario === 'staff_training' || customNoteText.toLowerCase().includes('training') || customNoteText.toLowerCase().includes('test')) {
+            baseSentence = `Today ${staffWording} played ${laserDuration} game for staff training / game testing${ref ? ` and as per ${ref} reference.` : '.'}`;
+          } else {
+            baseSentence = `Today ${staffWording} joined ${laserDuration} game as customer had requested as there were fewer players${ref ? ` and as per ${ref} reference.` : '.'}`;
+          }
         } else if (offer.includes('complimentary') || offerId === 'complimentary') {
           baseSentence = `Given complementary game to ${kidWording} for ${laserDuration} game as they were under 5 years${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('brochure') || offerId === 'cross_promotion_brochure') {
@@ -579,8 +656,10 @@ export const ClosingReportDashboard = ({
           baseSentence = `Given ${pct || 15}% discount to ${playerWording} for ${laserDuration} game as it was a corporate package${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('high price') || offerId === 'high_price_retention') {
           baseSentence = `Given ${pct || 10}% discount to ${playerWording} for ${laserDuration} game as they were going back due to high prices${ref ? ` and as per ${ref} reference.` : '.'}`;
+        } else if (b.customDiscountReason && !b.customNote) {
+          baseSentence = `Given ${pct || 100}% discount to ${playerWording} for ${laserDuration} game as ${b.customDiscountReason}${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (pct > 0) {
-          baseSentence = `Given ${pct}% discount to ${playerWording} for ${laserDuration} game as ${b.offerName || 'special discount'}${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct}% discount to ${playerWording} for ${laserDuration} game as ${b.offerName || b.customDiscountReason || 'special discount'}${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else {
           baseSentence = `Today we had a ${playerWording} for ${laserDuration} game.`;
         }
@@ -591,6 +670,21 @@ export const ClosingReportDashboard = ({
           baseSentence = `Today we had a group of ${pax} who made booking through Website for ${roomClean}.`;
         } else if (isActivityKids) {
           baseSentence = `Today we had a group of ${pax} who made booking through Activity Kids for ${roomClean}.`;
+        } else if (isStaffBooking) {
+          const staffScenario = b.staffGameScenario;
+          const staffWording = pax === 1 ? '1 staff' : `${pax} staff`;
+          if (staffScenario === 'custom_scenario' && (b.staffGameCustomReason || b.customDiscountReason || customNoteText)) {
+            const customReasonText = (b.staffGameCustomReason || b.customDiscountReason || customNoteText).trim();
+            if (customReasonText.toLowerCase().startsWith('today') || customReasonText.toLowerCase().startsWith('given')) {
+              baseSentence = `${customReasonText}${ref ? ` and as per ${ref} reference.` : '.'}`;
+            } else {
+              baseSentence = `Today ${staffWording} played ${roomClean} as ${customReasonText}${ref ? ` and as per ${ref} reference.` : '.'}`;
+            }
+          } else if (staffScenario === 'staff_training' || customNoteText.toLowerCase().includes('training') || customNoteText.toLowerCase().includes('test')) {
+            baseSentence = `Today ${staffWording} played ${roomClean} for staff training / game testing${ref ? ` and as per ${ref} reference.` : '.'}`;
+          } else {
+            baseSentence = `Today ${staffWording} joined ${roomClean} as customer had requested as there were fewer players${ref ? ` and as per ${ref} reference.` : '.'}`;
+          }
         } else if (offer.includes('complimentary') || offerId === 'complimentary') {
           baseSentence = `Given complementary game to ${kidWording} as they were under 5 years for ${roomClean}${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('brochure') || offerId === 'cross_promotion_brochure') {
@@ -605,8 +699,10 @@ export const ClosingReportDashboard = ({
           baseSentence = `Given ${pct || 15}% discount to ${playerWording} for ${roomClean} as it was a corporate package${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (offer.includes('high price') || offerId === 'high_price_retention') {
           baseSentence = `Given ${pct || 10}% discount to ${playerWording} for ${roomClean} as they were going back due to high prices${ref ? ` and as per ${ref} reference.` : '.'}`;
+        } else if (b.customDiscountReason && !b.customNote) {
+          baseSentence = `Given ${pct || 100}% discount to ${playerWording} for ${roomClean} as ${b.customDiscountReason}${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else if (pct > 0) {
-          baseSentence = `Given ${pct}% discount to ${playerWording} for ${roomClean} as ${b.offerName || 'special discount'}${ref ? ` and as per ${ref} reference.` : '.'}`;
+          baseSentence = `Given ${pct}% discount to ${playerWording} for ${roomClean} as ${b.offerName || b.customDiscountReason || 'special discount'}${ref ? ` and as per ${ref} reference.` : '.'}`;
         } else {
           baseSentence = `Today we had a ${playerWording} for ${roomClean}.`;
         }
@@ -615,16 +711,17 @@ export const ClosingReportDashboard = ({
       noteText = baseSentence;
 
       // Custom note on next line without "Note:", with proper grammar (reference does NOT populate for custom notes)
-      if (customNoteText) {
+      if (customNoteText && customNoteText !== b.customDiscountReason) {
         const formattedCustom = formatCustomNoteGrammar(customNoteText);
-        if (formattedCustom) {
+        if (formattedCustom && !noteText.includes(formattedCustom)) {
           noteText += `\n${formattedCustom}`;
         }
       }
 
       // Populate Customer Name and Mobile Number directly below custom note
       const isStandardComplimentary = (offer.includes('complimentary') || offerId === 'complimentary') && !customNoteText;
-      if (!isStandardComplimentary) {
+      const isStandardStaffGame = isStaffBooking && !customNoteText;
+      if (!isStandardComplimentary && !isStandardStaffGame) {
         if (b.customerName && b.customerName.trim()) {
           noteText += `\nCustomer Name: ${b.customerName.trim()}`;
         }
@@ -633,32 +730,55 @@ export const ClosingReportDashboard = ({
         }
       }
 
-      if (requiresRef && !ref) {
-        warnings.push({
+      const noteId = `booking_${b.id}`;
+      const isDeleted = deletedNoteIds.includes(noteId);
+      if (!isDeleted) {
+        const effectiveText = noteCustomOverrides[noteId] !== undefined ? noteCustomOverrides[noteId] : noteText;
+        const noteItem = {
+          id: noteId,
+          text: effectiveText,
+          originalText: noteText,
           booking: b,
-          message: `Missing manager reference for ${b.customerName || 'Booking'} (${b.gameName}, ${pct}% off)`
-        });
-      }
+          isManual: false,
+          isLaser,
+          ref,
+          roomOrDuration: roomClean,
+          isEdited: noteCustomOverrides[noteId] !== undefined && noteCustomOverrides[noteId] !== noteText
+        };
 
-      // Manager buckets
-      if (ref === 'Khaja Sir' || ref.toLowerCase().includes('khaja')) {
-        khajaNotes.push(noteText);
-      } else if (ref === 'Nayeem Sir' || ref.toLowerCase().includes('nayeem')) {
-        nayeemNotes.push(noteText);
-      } else if (isOnline) {
-        onlineNotes.push(noteText);
-      }
+        if (requiresRef && !ref) {
+          warnings.push({
+            booking: b,
+            message: `Missing manager reference for ${b.customerName || 'Booking'} (${b.gameName}, ${pct}% off)`
+          });
+        }
 
-      // ALWAYS add to roomNotesMap so it appears in closing message!
-      if (isLaser) {
-        roomNotesMap.laser.push(noteText);
-      } else {
-        const gName = (b.gameName || '').toLowerCase();
-        if (gName.includes('professor') || gName.includes('lab')) roomNotesMap.lab.push(noteText);
-        else if (gName.includes('locked')) roomNotesMap.lockedIn.push(noteText);
-        else if (gName.includes('sherlock')) roomNotesMap.sherlock.push(noteText);
-        else if (gName.includes('spy')) roomNotesMap.spy.push(noteText);
-        else roomNotesMap.lab.push(noteText);
+        // Add to allNotes so it is ALWAYS visible and editable
+        allNotes.push(noteItem);
+
+        // Manager & Online buckets
+        if (ref === 'Khaja Sir' || ref.toLowerCase().includes('khaja')) {
+          khajaNotes.push(noteItem);
+        } else if (ref === 'Nayeem Sir' || ref.toLowerCase().includes('nayeem')) {
+          nayeemNotes.push(noteItem);
+        } else if (isOnline) {
+          onlineNotes.push(noteItem);
+        } else {
+          // Custom discount, staff joined, or reference-free notes
+          otherNotes.push(noteItem);
+        }
+
+        // ALWAYS add to roomNotesMap so it appears in closing message!
+        if (isLaser) {
+          roomNotesMap.laser.push(noteItem);
+        } else {
+          const gName = (b.gameName || '').toLowerCase();
+          if (gName.includes('professor') || gName.includes('lab')) roomNotesMap.lab.push(noteItem);
+          else if (gName.includes('locked')) roomNotesMap.lockedIn.push(noteItem);
+          else if (gName.includes('sherlock')) roomNotesMap.sherlock.push(noteItem);
+          else if (gName.includes('spy')) roomNotesMap.spy.push(noteItem);
+          else roomNotesMap.lab.push(noteItem);
+        }
       }
     });
 
@@ -671,58 +791,89 @@ export const ClosingReportDashboard = ({
           message: `Manual Discount Entry missing manager reference (${entry.reason}, ${entry.groupSizeVal} players)`
         });
       } else if (res.isApproved && res.notes) {
-        res.notes.forEach(n => {
-          if (entry.reference === 'Khaja Sir' || (entry.reference || '').toLowerCase().includes('khaja')) {
-            khajaNotes.push(n.text);
-          } else if (entry.reference === 'Nayeem Sir' || (entry.reference || '').toLowerCase().includes('nayeem')) {
-            nayeemNotes.push(n.text);
-          } else {
-            onlineNotes.push(n.text);
-          }
+        res.notes.forEach((n, idx) => {
+          const noteId = `manual_${entry.id}_${idx}`;
+          const isDeleted = deletedNoteIds.includes(noteId);
+          if (!isDeleted) {
+            const effectiveText = noteCustomOverrides[noteId] !== undefined ? noteCustomOverrides[noteId] : n.text;
+            const noteItem = {
+              id: noteId,
+              text: effectiveText,
+              originalText: n.text,
+              manualEntry: entry,
+              isManual: true,
+              isLaser: n.isLaser,
+              ref: entry.reference,
+              roomOrDuration: n.roomOrDuration,
+              isEdited: noteCustomOverrides[noteId] !== undefined && noteCustomOverrides[noteId] !== n.text
+            };
 
-          if (n.isLaser) {
-            roomNotesMap.laser.push(n.text);
-          } else {
-            const roomName = (n.roomOrDuration || '').toLowerCase();
-            if (roomName.includes('professor') || roomName.includes('lab')) roomNotesMap.lab.push(n.text);
-            else if (roomName.includes('locked')) roomNotesMap.lockedIn.push(n.text);
-            else if (roomName.includes('sherlock')) roomNotesMap.sherlock.push(n.text);
-            else if (roomName.includes('spy')) roomNotesMap.spy.push(n.text);
-            else roomNotesMap.lab.push(n.text);
+            // Add to allNotes
+            allNotes.push(noteItem);
+
+            if (entry.reference === 'Khaja Sir' || (entry.reference || '').toLowerCase().includes('khaja')) {
+              khajaNotes.push(noteItem);
+            } else if (entry.reference === 'Nayeem Sir' || (entry.reference || '').toLowerCase().includes('nayeem')) {
+              nayeemNotes.push(noteItem);
+            } else if (entry.category === 'online' || (entry.reason || '').toLowerCase().includes('district') || (entry.reason || '').toLowerCase().includes('website')) {
+              onlineNotes.push(noteItem);
+            } else {
+              otherNotes.push(noteItem);
+            }
+
+            if (n.isLaser) {
+              roomNotesMap.laser.push(noteItem);
+            } else {
+              const roomName = (n.roomOrDuration || '').toLowerCase();
+              if (roomName.includes('professor') || roomName.includes('lab')) roomNotesMap.lab.push(noteItem);
+              else if (roomName.includes('locked')) roomNotesMap.lockedIn.push(noteItem);
+              else if (roomName.includes('sherlock')) roomNotesMap.sherlock.push(noteItem);
+              else if (roomName.includes('spy')) roomNotesMap.spy.push(noteItem);
+              else roomNotesMap.lab.push(noteItem);
+            }
           }
         });
       }
     });
 
     return {
+      allNotes,
       khajaBucket: khajaNotes,
       nayeemBucket: nayeemNotes,
       onlineBucket: onlineNotes,
+      otherBucket: otherNotes,
       missingRefWarnings: warnings,
       allDiscountNotes: roomNotesMap
     };
-  }, [shiftBookings, shiftManualDiscounts]);
+  }, [shiftBookings, shiftManualDiscounts, noteCustomOverrides, deletedNoteIds]);
+
+  // Helper: Extract display text whether item is string or note object
+  const getText = (item) => {
+    if (!item) return '';
+    if (typeof item === 'string') return item;
+    return item.text || '';
+  };
 
   // Derived Auto Laser Print Text
   const autoLaserPrintText = useMemo(() => {
     if (allDiscountNotes.laser.length === 0) return 'No Laser Shooter notes.';
-    return allDiscountNotes.laser.map((n, idx) => `${idx + 1}. ${n}`).join('\n\n');
+    return allDiscountNotes.laser.map((n, idx) => `${idx + 1}. ${getText(n)}`).join('\n\n');
   }, [allDiscountNotes]);
 
   // Derived Auto Escape Print Text
   const autoEscapePrintText = useMemo(() => {
     const blocks = [];
     if (allDiscountNotes.lockedIn.length > 0) {
-      blocks.push(`*LOCKED IN*\n` + allDiscountNotes.lockedIn.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
+      blocks.push(`*LOCKED IN*\n` + allDiscountNotes.lockedIn.map((n, i) => `${i + 1}. ${getText(n)}`).join('\n\n'));
     }
     if (allDiscountNotes.lab.length > 0) {
-      blocks.push(`*PROFESSOR X'S LAB*\n` + allDiscountNotes.lab.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
+      blocks.push(`*PROFESSOR X'S LAB*\n` + allDiscountNotes.lab.map((n, i) => `${i + 1}. ${getText(n)}`).join('\n\n'));
     }
     if (allDiscountNotes.sherlock.length > 0) {
-      blocks.push(`*SHERLOCK'S LAST CASE*\n` + allDiscountNotes.sherlock.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
+      blocks.push(`*SHERLOCK'S LAST CASE*\n` + allDiscountNotes.sherlock.map((n, i) => `${i + 1}. ${getText(n)}`).join('\n\n'));
     }
     if (allDiscountNotes.spy.length > 0) {
-      blocks.push(`*SPY AGENTS*\n` + allDiscountNotes.spy.map((n, i) => `${i + 1}. ${n}`).join('\n\n'));
+      blocks.push(`*SPY AGENTS*\n` + allDiscountNotes.spy.map((n, i) => `${i + 1}. ${getText(n)}`).join('\n\n'));
     }
     return blocks.length > 0 ? blocks.join('\n\n') : 'No Escape Room notes.';
   }, [allDiscountNotes]);
@@ -753,7 +904,8 @@ export const ClosingReportDashboard = ({
         combined.push(customNote.trim());
       }
       autoNotes.forEach((n, idx) => {
-        combined.push(`${idx + 1}. ${n}`);
+        const t = getText(n);
+        if (t) combined.push(`${idx + 1}. ${t}`);
       });
       if (combined.length === 0) {
         return 'Note:- ';
@@ -779,7 +931,7 @@ Total Games: *${pad2(laserTotalGames)}*
 10 mins games: *${pad2(laser10Min)}*
 20 min games: *${pad2(laser20Min)}*
 30 mins games: *${pad2(laser30Min)}*
-Staff game: *${pad2(staffGamesCount)}*
+Staff game: *${pad2(effectiveStaffGamesCount)}*
 Complementary game: *${pad2(derivedComplementaryCountLaser)}*
 Total sale:- *₹${laserTotalSale.toLocaleString()}/-*
 Excess:- *${laserExcessVal}*
@@ -828,7 +980,7 @@ ${spyNotesText}
     laser10Min,
     laser20Min,
     laser30Min,
-    staffGamesCount,
+    effectiveStaffGamesCount,
     derivedComplementaryCountLaser,
     laserTotalSale,
     excessAmounts,
@@ -852,10 +1004,100 @@ ${spyNotesText}
 
   const handleCopyBucket = (managerName, bucketNotes) => {
     const text = `*${managerName} Reference (${formatDateDDMMYYYY(shiftDate)})*\n\n` + 
-                 bucketNotes.map((n, idx) => `${idx + 1}. ${n}`).join('\n\n');
+                 bucketNotes.map((n, idx) => `${idx + 1}. ${getText(n)}`).join('\n\n');
     navigator.clipboard.writeText(text);
     setCopiedBucket(managerName);
     setTimeout(() => setCopiedBucket(null), 2500);
+  };
+
+  // Note Edit and Delete Handlers
+  const handleOpenEditNote = (noteItem) => {
+    setEditingNoteItem(noteItem);
+    setEditingNoteText(getText(noteItem));
+  };
+
+  const handleSaveEditedNote = async () => {
+    if (!editingNoteItem) return;
+    const trimmed = editingNoteText.trim();
+    if (!trimmed) {
+      // User cleared the note text completely! Remove note from closing report and clear from booking
+      const nextDeleted = Array.from(new Set([...deletedNoteIds, editingNoteItem.id]));
+      const nextOverrides = { ...noteCustomOverrides };
+      delete nextOverrides[editingNoteItem.id];
+      setDeletedNoteIds(nextDeleted);
+      setNoteCustomOverrides(nextOverrides);
+      persistUpdates({ deletedNoteIds: nextDeleted, noteCustomOverrides: nextOverrides });
+
+      if (editingNoteItem.booking && onUpdateBooking) {
+        try {
+          await onUpdateBooking(editingNoteItem.booking.id, {
+            customNote: '',
+            customDiscountReason: '',
+            notes: ''
+          });
+        } catch (e) {}
+      }
+      setEditingNoteItem(null);
+      return;
+    }
+
+    const nextOverrides = {
+      ...noteCustomOverrides,
+      [editingNoteItem.id]: trimmed
+    };
+    setNoteCustomOverrides(nextOverrides);
+    persistUpdates({ noteCustomOverrides: nextOverrides });
+    setEditingNoteItem(null);
+  };
+
+  const handleResetNoteToDefault = () => {
+    if (!editingNoteItem) return;
+    const nextOverrides = { ...noteCustomOverrides };
+    delete nextOverrides[editingNoteItem.id];
+    setNoteCustomOverrides(nextOverrides);
+    persistUpdates({ noteCustomOverrides: nextOverrides });
+    setEditingNoteItem(null);
+  };
+
+  const handleOpenDeleteNote = (noteItem) => {
+    setDeletingNoteItem(noteItem);
+  };
+
+  const handleConfirmDeleteFromReport = async () => {
+    if (!deletingNoteItem) return;
+    const nextDeleted = Array.from(new Set([...deletedNoteIds, deletingNoteItem.id]));
+    setDeletedNoteIds(nextDeleted);
+    persistUpdates({ deletedNoteIds: nextDeleted });
+
+    if (deletingNoteItem.booking && onUpdateBooking) {
+      try {
+        await onUpdateBooking(deletingNoteItem.booking.id, {
+          customNote: '',
+          customDiscountReason: '',
+          notes: ''
+        });
+      } catch (e) {}
+    }
+    setDeletingNoteItem(null);
+  };
+
+  const handleConfirmDeleteEntireBookingOrEntry = () => {
+    if (!deletingNoteItem) return;
+    if (deletingNoteItem.isManual && deletingNoteItem.manualEntry) {
+      if (onDeleteManualDiscount) {
+        onDeleteManualDiscount(deletingNoteItem.manualEntry.id);
+      }
+    } else if (deletingNoteItem.booking) {
+      if (onDeleteBooking) {
+        onDeleteBooking(deletingNoteItem.booking.id);
+      }
+    }
+    setDeletingNoteItem(null);
+  };
+
+  const handleRestoreAllDeletedNotes = () => {
+    setDeletedNoteIds([]);
+    persistUpdates({ deletedNoteIds: [] });
   };
 
   // Direct Print Execution Function
@@ -883,6 +1125,63 @@ ${spyNotesText}
       </html>
     `);
     printWindow.document.close();
+  };
+
+  const renderBucketNotesList = (notesList, emptyMessage) => {
+    if (!notesList || notesList.length === 0) {
+      return <p className="text-xs text-slate-400 italic">{emptyMessage}</p>;
+    }
+
+    return (
+      <div className="space-y-2 font-sans">
+        {notesList.map((noteItem, index) => {
+          const text = getText(noteItem);
+          const isEdited = noteItem.isEdited || Boolean(noteCustomOverrides[noteItem.id]);
+          return (
+            <div
+              key={noteItem.id || index}
+              className="group bg-white p-3 rounded-xl border border-slate-200 hover:border-indigo-300 shadow-2xs hover:shadow-xs transition-all flex items-start justify-between gap-2.5"
+            >
+              <div className="flex items-start gap-2 min-w-0 flex-1">
+                <span className="font-mono font-bold text-[11px] text-slate-400 mt-0.5 shrink-0">
+                  {index + 1}.
+                </span>
+                <div className="space-y-1 min-w-0 flex-1">
+                  <p className="text-xs text-slate-800 font-medium whitespace-pre-line leading-relaxed">
+                    {text}
+                  </p>
+                  {isEdited && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                      <Edit3 className="w-2.5 h-2.5" /> Edited note
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Action buttons: Edit (pencil) and Delete (trash) */}
+              <div className="flex items-center gap-1 shrink-0 opacity-90 group-hover:opacity-100 transition-opacity">
+                <button
+                  type="button"
+                  onClick={() => handleOpenEditNote(noteItem)}
+                  className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 transition-all shadow-2xs cursor-pointer"
+                  title="Edit note text"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenDeleteNote(noteItem)}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-200 transition-all shadow-2xs cursor-pointer"
+                  title="Delete / remove note"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
@@ -1074,26 +1373,27 @@ ${spyNotesText}
                 <div className="w-3 h-3 rounded-full bg-cyan-500 animate-pulse" />
                 <h2 className="text-base font-extrabold text-slate-900 tracking-tight">Laser Shooter Sales</h2>
               </div>
-              <span className="text-xs font-extrabold font-mono text-cyan-700 bg-cyan-50 px-3 py-1 rounded-full border border-cyan-200">
+              <span className="text-xs font-extrabold font-mono text-cyan-700 bg-cyan-50 px-3 py-1 rounded-full border border-cyan-200 shadow-2xs">
                 ₹{laserTotalSale.toLocaleString()} Total
               </span>
             </div>
 
+            {/* Quick Metrics Overview Bar */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="bg-cyan-50/50 p-3 rounded-xl border border-cyan-100">
-                <span className="text-[11px] font-bold text-slate-500 block">Paid Sessions</span>
-                <span className="text-xl font-extrabold text-cyan-900 font-mono">{laserSessions}</span>
+                <span className="text-xs font-bold text-slate-500 block uppercase">Paid Sessions</span>
+                <span className="text-2xl font-black text-cyan-950 font-mono mt-1 block">{laserSessions}</span>
               </div>
               <div className="bg-cyan-50/50 p-3 rounded-xl border border-cyan-100">
-                <span className="text-[11px] font-bold text-slate-500 block">Total Players</span>
-                <span className="text-xl font-extrabold text-cyan-900 font-mono">{laserTotalGames}</span>
+                <span className="text-xs font-bold text-slate-500 block uppercase">Total Players</span>
+                <span className="text-2xl font-black text-cyan-950 font-mono mt-1 block">{laserTotalGames}</span>
               </div>
               <div className="bg-cyan-50/50 p-3 rounded-xl border border-cyan-100">
-                <span className="text-[11px] font-bold text-slate-500 block">Complimentary</span>
-                <span className="text-xl font-extrabold text-cyan-900 font-mono">{derivedComplementaryCountLaser}</span>
+                <span className="text-xs font-bold text-slate-500 block uppercase">Complimentary</span>
+                <span className="text-2xl font-black text-cyan-950 font-mono mt-1 block">{derivedComplementaryCountLaser}</span>
               </div>
               <div className="bg-cyan-50/50 p-3 rounded-xl border border-cyan-100">
-                <span className="text-[11px] font-bold text-slate-500 block">Staff Games</span>
+                <span className="text-xs font-bold text-slate-500 block uppercase">Staff Games</span>
                 <input
                   type="number"
                   min="0"
@@ -1103,12 +1403,11 @@ ${spyNotesText}
                     setStaffGamesCount(count);
                     persistUpdates({ staffGamesCount: count });
                   }}
-                  className="w-full bg-white border border-cyan-300 rounded text-sm font-bold font-mono px-2 py-0.5 mt-1 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                  className="w-full bg-white border border-cyan-300 rounded text-lg font-bold font-mono px-2 py-0.5 mt-1 focus:outline-none focus:ring-1 focus:ring-cyan-500"
                 />
               </div>
             </div>
 
-            {/* Game Durations - Large, Clear, Prominent */}
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-center">
                 <span className="text-xs font-extrabold text-slate-700 block">10 mins (Combat)</span>
@@ -1150,7 +1449,7 @@ ${spyNotesText}
                   placeholder="e.g. Fog machine off"
                   value={notes.laser}
                   onChange={(e) => {
-                    const val = e.target.value;
+                    const val = formatSentenceCaseInput(e.target.value);
                     setNotes(prev => {
                       const next = { ...prev, laser: val };
                       persistUpdates({ notes: next });
@@ -1187,14 +1486,14 @@ ${spyNotesText}
             </div>
           </div>
 
-          {/* Escape Time Rooms Summary Card (Includes Group Brackets) */}
+          {/* Escape Time Rooms Summary Card */}
           <div className="bg-white rounded-2xl p-6 border border-red-200 shadow-md space-y-4">
             <div className="flex items-center justify-between border-b border-red-100 pb-3">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                <h2 className="text-base font-extrabold text-slate-900 tracking-tight">Escape Time Sales & Brackets</h2>
+                <h2 className="text-base font-extrabold text-slate-900 tracking-tight">Escape Time Sales & Rooms</h2>
               </div>
-              <span className="text-xs font-extrabold font-mono text-red-700 bg-red-50 px-3 py-1 rounded-full border border-red-200">
+              <span className="text-xs font-extrabold font-mono text-red-700 bg-red-50 px-3 py-1 rounded-full border border-red-200 shadow-2xs">
                 ₹{(labStats.sale + lockedInStats.sale + sherlockStats.sale + spyStats.sale).toLocaleString()} Total
               </span>
             </div>
@@ -1241,7 +1540,6 @@ ${spyNotesText}
                     <span className="font-mono text-slate-950 font-black text-sm">₹{room.stats.sale.toLocaleString()}</span>
                   </div>
 
-                  {/* Main Metrics - Clearer, Bolder Typography */}
                   <div className="grid grid-cols-4 gap-2 text-center">
                     <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
                       <span className="text-[11px] text-slate-600 font-extrabold block uppercase tracking-wider">Sessions</span>
@@ -1261,22 +1559,19 @@ ${spyNotesText}
                     </div>
                   </div>
 
-                  {/* Group Brackets Breakdown - Clearer & More Visible */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white/90 p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-                    <div className="text-xs font-bold text-slate-700">2-3 Players: <span className="font-mono font-black text-slate-950 text-sm ml-1">{room.stats.bracket2to3}</span></div>
-                    <div className="text-xs font-bold text-slate-700">4-6 Players: <span className="font-mono font-black text-slate-950 text-sm ml-1">{room.stats.bracket4to6}</span></div>
+                  <div className="grid grid-cols-3 gap-2 bg-white/90 p-2.5 rounded-xl border border-slate-200 shadow-2xs text-center sm:text-left">
+                    <div className="text-xs font-bold text-slate-700">2–3 Players: <span className="font-mono font-black text-slate-950 text-sm ml-1">{room.stats.bracket2to3}</span></div>
+                    <div className="text-xs font-bold text-slate-700">4–6 Players: <span className="font-mono font-black text-slate-950 text-sm ml-1">{room.stats.bracket4to6}</span></div>
                     <div className="text-xs font-bold text-slate-700">7+ Players: <span className="font-mono font-black text-slate-950 text-sm ml-1">{room.stats.bracket7plus}</span></div>
-                    <div className="text-xs font-bold text-indigo-900">5 Players: <span className="font-mono font-black text-indigo-950 text-sm ml-1">{room.stats.bracket5}</span></div>
                   </div>
 
-                  {/* Room Custom Note Input */}
                   <div className="pt-1">
                     <input
                       type="text"
                       placeholder={`Custom note for ${room.name} (optional)...`}
                       value={notes[room.key] || ''}
                       onChange={(e) => {
-                        const val = e.target.value;
+                        const val = formatSentenceCaseInput(e.target.value);
                         setNotes(prev => {
                           const next = { ...prev, [room.key]: val };
                           persistUpdates({ notes: next });
@@ -1392,109 +1687,232 @@ ${spyNotesText}
               </div>
             )}
 
-            <div className="space-y-3">
-              {/* Khaja Sir Bucket */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
+            <div className="space-y-4">
+              {/* Optional Restore Banner for accidentally removed notes */}
+              {deletedNoteIds.length > 0 && (
+                <div className="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 shadow-2xs">
                   <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-xs text-slate-900">Khaja Sir Reference Bucket</span>
-                    <span className="bg-slate-200 text-slate-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
-                      {khajaBucket.length} note{khajaBucket.length !== 1 ? 's' : ''}
-                    </span>
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span><strong>{deletedNoteIds.length}</strong> note(s) removed from closing report</span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleRestoreAllDeletedNotes}
+                    className="px-2.5 py-1 bg-white hover:bg-amber-100 border border-amber-300 rounded-lg text-[11px] font-bold text-amber-900 flex items-center gap-1 shadow-2xs cursor-pointer transition-colors"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Restore All</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Filter Tabs for Notes */}
+              <div className="flex items-center gap-1.5 flex-wrap p-1.5 bg-slate-100 rounded-xl border border-slate-200 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setNotesFilterTab('all')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    notesFilterTab === 'all' 
+                      ? 'bg-indigo-600 text-white shadow-xs' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  All Shift Notes ({allNotes.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotesFilterTab('other')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    notesFilterTab === 'other' 
+                      ? 'bg-indigo-600 text-white shadow-xs' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  Custom & Staff ({otherBucket.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotesFilterTab('online')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    notesFilterTab === 'online' 
+                      ? 'bg-indigo-600 text-white shadow-xs' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  Online Bookings ({onlineBucket.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotesFilterTab('khaja')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    notesFilterTab === 'khaja' 
+                      ? 'bg-indigo-600 text-white shadow-xs' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  Khaja Sir ({khajaBucket.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotesFilterTab('nayeem')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    notesFilterTab === 'nayeem' 
+                      ? 'bg-indigo-600 text-white shadow-xs' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  Nayeem Sir ({nayeemBucket.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotesFilterTab('segregated')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    notesFilterTab === 'segregated' 
+                      ? 'bg-indigo-600 text-white shadow-xs' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  View All Buckets
+                </button>
+              </div>
+
+              {/* View 1: ALL NOTES MASTER LIST */}
+              {notesFilterTab === 'all' && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-indigo-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-xs text-slate-900">All Shift Notes (Click pencil to edit, trash to delete)</span>
+                      <span className="bg-indigo-100 text-indigo-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border border-indigo-200">
+                        {allNotes.length} total note{allNotes.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    {allNotes.length > 0 && (
+                      <button
+                        onClick={() => handleCopyBucket('All Shift Notes', allNotes)}
+                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+                      >
+                        {copiedBucket === 'All Shift Notes' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedBucket === 'All Shift Notes' ? 'Copied' : 'Copy All'}</span>
+                      </button>
+                    )}
+                  </div>
+                  {renderBucketNotesList(allNotes, 'No notes recorded for this shift date.')}
+                </div>
+              )}
+
+              {/* View 2: Specific filtered views or Segregated Buckets */}
+              {(notesFilterTab === 'khaja' || notesFilterTab === 'segregated') && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-xs text-slate-900">Khaja Sir Reference Bucket</span>
+                      <span className="bg-slate-200 text-slate-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                        {khajaBucket.length} note{khajaBucket.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    {khajaBucket.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleCopyBucket('Khaja Sir Reference', khajaBucket)}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+                        >
+                          {copiedBucket === 'Khaja Sir Reference' ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+                          <span>Share Khaja</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   {khajaBucket.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleCopyBucket('Khaja Sir Reference', khajaBucket)}
-                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
-                      >
-                        {copiedBucket === 'Khaja Sir Reference' ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
-                        <span>Share Khaja</span>
-                      </button>
+                    <div className="p-3 bg-amber-100 border border-amber-300 rounded-xl text-xs font-bold text-amber-950 flex items-center gap-2 shadow-sm">
+                      <Camera className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>📸 Mandatory Rule: Attach screenshot of Khaja Sir reference approval in closing message.</span>
                     </div>
                   )}
+
+                  {renderBucketNotesList(khajaBucket, 'No notes for Khaja Sir today.')}
                 </div>
+              )}
 
-                {khajaBucket.length > 0 && (
-                  <div className="p-3 bg-amber-100 border border-amber-300 rounded-xl text-xs font-bold text-amber-950 flex items-center gap-2 shadow-sm">
-                    <Camera className="w-4 h-4 text-amber-700 shrink-0" />
-                    <span>📸 Mandatory Rule: Attach screenshot of Khaja Sir reference approval in closing message.</span>
-                  </div>
-                )}
-
-                {khajaBucket.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">No notes for Khaja Sir today.</p>
-                ) : (
-                  <ul className="text-xs text-slate-700 space-y-1 pl-4 list-disc font-sans">
-                    {khajaBucket.map((n, i) => <li key={i}>{n}</li>)}
-                  </ul>
-                )}
-              </div>
-
-              {/* Nayeem Sir Bucket */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-xs text-slate-900">Nayeem Sir Reference Bucket</span>
-                    <span className="bg-slate-200 text-slate-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
-                      {nayeemBucket.length} note{nayeemBucket.length !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  {nayeemBucket.length > 0 && (
+              {(notesFilterTab === 'nayeem' || notesFilterTab === 'segregated') && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-xs text-slate-900">Nayeem Sir Reference Bucket</span>
+                      <span className="bg-slate-200 text-slate-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                        {nayeemBucket.length} note{nayeemBucket.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    {nayeemBucket.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleCopyBucket('Nayeem Sir Reference', nayeemBucket)}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+                        >
+                          {copiedBucket === 'Nayeem Sir Reference' ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+                          <span>Share Nayeem</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {renderBucketNotesList(nayeemBucket, 'No notes for Nayeem Sir today.')}
+                </div>
+              )}
+
+              {(notesFilterTab === 'online' || notesFilterTab === 'segregated') && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-xs text-slate-900">Online (District / Website / Activity Kids) Bucket</span>
+                      <span className="bg-slate-200 text-slate-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                        {onlineBucket.length} note{onlineBucket.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    {onlineBucket.length > 0 && (
                       <button
-                        onClick={() => handleCopyBucket('Nayeem Sir Reference', nayeemBucket)}
+                        onClick={() => handleCopyBucket('Online Bookings', onlineBucket)}
                         className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
                       >
-                        {copiedBucket === 'Nayeem Sir Reference' ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
-                        <span>Share Nayeem</span>
+                        {copiedBucket === 'Online Bookings' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedBucket === 'Online Bookings' ? 'Copied' : 'Copy Notes'}
                       </button>
-                    </div>
-                  )}
-                </div>
-                {nayeemBucket.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">No notes for Nayeem Sir today.</p>
-                ) : (
-                  <ul className="text-xs text-slate-700 space-y-1 pl-4 list-disc font-sans">
-                    {nayeemBucket.map((n, i) => <li key={i}>{n}</li>)}
-                  </ul>
-                )}
-              </div>
-
-              {/* Online / District Bucket */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-xs text-slate-900">Online (District / Website) Bucket</span>
-                    <span className="bg-slate-200 text-slate-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
-                      {onlineBucket.length} note{onlineBucket.length !== 1 ? 's' : ''}
-                    </span>
+                    )}
                   </div>
+
                   {onlineBucket.length > 0 && (
-                    <button
-                      onClick={() => handleCopyBucket('Online Bookings', onlineBucket)}
-                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
-                    >
-                      {copiedBucket === 'Online Bookings' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      {copiedBucket === 'Online Bookings' ? 'Copied' : 'Copy Notes'}
-                    </button>
+                    <div className="p-3 bg-purple-100 border border-purple-300 rounded-xl text-xs font-bold text-purple-950 flex items-center gap-2 shadow-sm">
+                      <Camera className="w-4 h-4 text-purple-700 shrink-0" />
+                      <span>📸 Mandatory Rule: Attach booking / payment screenshots (District / Website / Activity Kids) in closing.</span>
+                    </div>
                   )}
-                </div>
 
-                {onlineBucket.length > 0 && (
-                  <div className="p-3 bg-purple-100 border border-purple-300 rounded-xl text-xs font-bold text-purple-950 flex items-center gap-2 shadow-sm">
-                    <Camera className="w-4 h-4 text-purple-700 shrink-0" />
-                    <span>📸 Mandatory Rule: Attach booking / payment screenshots (District / Website / Activity Kids) in closing.</span>
+                  {renderBucketNotesList(onlineBucket, 'No online booking entries today.')}
+                </div>
+              )}
+
+              {(notesFilterTab === 'other' || notesFilterTab === 'segregated') && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-xs text-slate-900">Custom Discount & Staff Notes Bucket</span>
+                      <span className="bg-slate-200 text-slate-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                        {otherBucket.length} note{otherBucket.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    {otherBucket.length > 0 && (
+                      <button
+                        onClick={() => handleCopyBucket('Custom & Staff Notes', otherBucket)}
+                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+                      >
+                        {copiedBucket === 'Custom & Staff Notes' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedBucket === 'Custom & Staff Notes' ? 'Copied' : 'Copy Notes'}</span>
+                      </button>
+                    )}
                   </div>
-                )}
-                {onlineBucket.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">No online booking entries today.</p>
-                ) : (
-                  <ul className="text-xs text-slate-700 space-y-1 pl-4 list-disc font-sans">
-                    {onlineBucket.map((n, i) => <li key={i}>{n}</li>)}
-                  </ul>
-                )}
-              </div>
+                  {renderBucketNotesList(otherBucket, 'No custom or staff discount notes for this shift.')}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1716,6 +2134,195 @@ ${spyNotesText}
                 className="px-5 py-2 text-xs font-extrabold text-white bg-red-600 hover:bg-red-700 rounded-xl flex items-center gap-1.5 shadow"
               >
                 <Printer className="w-4 h-4" /> Print Escape Notes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Note Modal */}
+      {editingNoteItem && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">Edit Closing Report Note</h3>
+                  <p className="text-[11px] text-slate-500 font-medium">Updates closing message and buckets in real-time</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingNoteItem(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 block">Note Text</label>
+                <button
+                  type="button"
+                  onClick={() => setEditingNoteText('')}
+                  className="text-[11px] text-red-600 hover:text-red-700 font-bold hover:underline cursor-pointer"
+                >
+                  Clear Note Text
+                </button>
+              </div>
+              <textarea
+                rows={5}
+                value={editingNoteText}
+                onChange={(e) => setEditingNoteText(formatSentenceCaseInput(e.target.value))}
+                placeholder="Edit note text (or leave empty and click Save to remove it completely)..."
+                className="w-full text-xs p-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-900 leading-relaxed shadow-xs"
+              />
+              {editingNoteItem.isEdited && (
+                <p className="text-[11px] text-amber-700 font-medium">
+                  Original: <span className="italic">{editingNoteItem.originalText}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Linked Booking / Manual Entry Info */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs text-slate-600">
+              <div className="font-bold text-slate-800 flex items-center justify-between">
+                <span>Source: {editingNoteItem.isManual ? 'Manual Discount Entry' : 'Booking'}</span>
+                <span className="font-mono text-[11px] text-slate-500">ID: {editingNoteItem.id}</span>
+              </div>
+              {editingNoteItem.booking && (
+                <p className="text-[11px] text-slate-600">
+                  Customer: <strong className="text-slate-800">{editingNoteItem.booking.customerName || 'N/A'}</strong> • Pax: {editingNoteItem.booking.paxCount} • Game: {editingNoteItem.booking.gameName}
+                </p>
+              )}
+              {editingNoteItem.manualEntry && (
+                <p className="text-[11px] text-slate-600">
+                  Reason: <strong className="text-slate-800">{editingNoteItem.manualEntry.reason}</strong> • Ref: {editingNoteItem.manualEntry.reference}
+                </p>
+              )}
+            </div>
+
+            {/* Footer Actions */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                {editingNoteItem.isEdited && (
+                  <button
+                    type="button"
+                    onClick={handleResetNoteToDefault}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Reset
+                  </button>
+                )}
+                {editingNoteItem.booking && onEditBooking && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const b = editingNoteItem.booking;
+                      setEditingNoteItem(null);
+                      onEditBooking(b);
+                    }}
+                    className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Edit Full Booking
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => setEditingNoteItem(null)}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEditedNote}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer"
+                >
+                  Save Note
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete / Remove Note Confirmation Modal */}
+      {deletingNoteItem && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">Delete / Remove Note</h3>
+                  <p className="text-[11px] text-slate-500 font-medium">Choose how you want to handle this note</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeletingNoteItem(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 space-y-1 font-medium">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Note:</span>
+              <p className="whitespace-pre-line leading-relaxed italic text-slate-800">"{getText(deletingNoteItem)}"</p>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              {/* Option 1: Remove from Closing Report Only */}
+              <button
+                type="button"
+                onClick={handleConfirmDeleteFromReport}
+                className="w-full p-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl text-left transition-all cursor-pointer"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-amber-950">Remove from Closing Report Only</span>
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-200/60 px-2 py-0.5 rounded">Safe</span>
+                </div>
+                <p className="text-[11px] text-amber-800 mt-0.5 font-medium">
+                  Removes this note from closing message and buckets, but keeps booking safe in CRM.
+                </p>
+              </button>
+
+              {/* Option 2: Delete entire booking or manual discount */}
+              {((deletingNoteItem.booking && onDeleteBooking) || (deletingNoteItem.manualEntry && onDeleteManualDiscount)) && (
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteEntireBookingOrEntry}
+                  className="w-full p-3 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl text-left transition-all cursor-pointer"
+                >
+                  <span className="text-xs font-black text-red-950 block">
+                    {deletingNoteItem.isManual ? 'Delete Discount Entry Completely' : 'Delete Entire Booking from CRM'}
+                  </span>
+                  <p className="text-[11px] text-red-800 mt-0.5 font-medium">
+                    Permanently removes this {deletingNoteItem.isManual ? 'discount entry' : 'booking'} from CRM database.
+                  </p>
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeletingNoteItem(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancel
               </button>
             </div>
           </div>

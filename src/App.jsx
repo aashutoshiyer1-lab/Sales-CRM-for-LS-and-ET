@@ -244,6 +244,8 @@ export function App() {
             onAddManualDiscount={handleAddManualDiscount}
             onDeleteManualDiscount={handleDeleteManualDiscount}
             onEditBooking={(b) => handleOpenEditBookingModal(b)}
+            onDeleteBooking={handleDeleteBooking}
+            onUpdateBooking={(bookingId, updates) => handleSaveOrUpdateBooking(updates, bookingId)}
           />
         )}
       </main>
