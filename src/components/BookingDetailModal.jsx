@@ -7,11 +7,12 @@ import {
   Mail, 
   Receipt, 
   Trash2, 
-  Lock,
-  Gamepad2,
-  Tag,
-  ShieldCheck,
-  Camera
+  Lock, 
+  Gamepad2, 
+  Tag, 
+  ShieldCheck, 
+  Camera,
+  MessageCircle
 } from 'lucide-react';
 
 export const BookingDetailModal = ({ 
@@ -30,14 +31,35 @@ export const BookingDetailModal = ({
     }
   };
 
+  const handleSendWhatsApp = () => {
+    if (!booking.phone) {
+      alert('No phone number recorded for this customer.');
+      return;
+    }
+    const cleanPhone = booking.phone.replace(/\D/g, '');
+    const phoneWithCountry = cleanPhone.startsWith('91') && cleanPhone.length > 10 ? cleanPhone : `91${cleanPhone.slice(-10)}`;
+    
+    let msg = '';
+    if (booking.offerId === 'birthday_package') {
+      msg = `🎉 *Birthday Package Booking Confirmed! - ${booking.venue}*\n\nHi *${booking.customerName}*,\nYour birthday game booking is confirmed! Details:\n\n🎮 *Game:* ${booking.gameName}\n📅 *Date:* ${booking.date}\n⏰ *Time Slot:* ${booking.timeSlot}\n👥 *Players:* ${booking.paxCount} Players\n💰 *Total Paid:* ₹${Number(booking.totalAmount).toLocaleString()}\n\n📍 *Address:* Begumpet, Hyderabad\n⚠️ Please arrive 10-15 minutes prior to your slot time. Looking forward to celebrating with you! 🎂`;
+    } else if (booking.offerId === 'corporate_package') {
+      msg = `💼 *Corporate Event Booking Confirmed - ${booking.venue}*\n\nDear *${booking.customerName}*,\nYour corporate team booking has been confirmed! Details:\n\n🎮 *Game:* ${booking.gameName}\n📅 *Date:* ${booking.date}\n⏰ *Time Slot:* ${booking.timeSlot}\n👥 *Team Size:* ${booking.paxCount} Players\n💰 *Total:* ₹${Number(booking.totalAmount).toLocaleString()}\n\n📍 *Address:* Begumpet, Hyderabad\n⚠️ Please arrive 10-15 minutes prior to your slot time.`;
+    } else {
+      msg = `✅ *Booking Confirmation - ${booking.venue}*\n\nHi *${booking.customerName}*,\nYour booking is confirmed! Details:\n\n🎮 *Game:* ${booking.gameName}\n📅 *Date:* ${booking.date}\n⏰ *Time Slot:* ${booking.timeSlot}\n👥 *Players:* ${booking.paxCount} Players\n💰 *Total Amount:* ₹${Number(booking.totalAmount).toLocaleString()}\n\n📍 *Address:* Begumpet, Hyderabad\n⚠️ Please arrive 10-15 minutes before your slot time. See you soon!`;
+    }
+
+    const url = `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-      <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-md">
+      <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl relative space-y-3.5 sm:space-y-4 max-h-[94vh] overflow-y-auto">
         
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-          <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-2xl border ${
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className={`p-2 sm:p-2.5 rounded-xl sm:rounded-2xl border ${
               isEscape ? 'bg-red-50 text-red-600 border-red-200 shadow-sm' : 'bg-cyan-50 text-cyan-600 border-cyan-200 shadow-sm'
             }`}>
               {isEscape ? <Lock className="w-5 h-5" /> : <Gamepad2 className="w-5 h-5" />}
@@ -178,20 +200,31 @@ export const BookingDetailModal = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
-          <button
-            onClick={handleDelete}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-all"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>Delete Booking</span>
-          </button>
+        <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDelete}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-all"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete</span>
+            </button>
+
+            <button
+              onClick={handleSendWhatsApp}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-500/20 transition-all active:scale-95"
+              title="Send WhatsApp confirmation directly to customer"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span>WhatsApp</span>
+            </button>
+          </div>
           
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-all"
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-all"
           >
-            Close Receipt
+            Close
           </button>
         </div>
 

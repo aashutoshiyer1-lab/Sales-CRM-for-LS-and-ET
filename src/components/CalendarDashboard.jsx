@@ -17,7 +17,9 @@ import {
   Layers,
   ShieldCheck,
   Grid,
-  Camera
+  Camera,
+  Lock,
+  Gamepad2
 } from 'lucide-react';
 
 export const CalendarDashboard = ({ 
@@ -179,28 +181,45 @@ export const CalendarDashboard = ({
     <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       
       {/* Header Banner */}
-      <div className={`rounded-3xl p-6 sm:p-8 border shadow-xl relative overflow-hidden transition-all ${
+      <div className={`rounded-3xl p-4 sm:p-8 border shadow-xl relative overflow-hidden transition-all ${
         isEscapeTime
           ? 'bg-gradient-to-r from-red-50 via-white to-amber-50 border-red-200'
           : 'bg-gradient-to-r from-cyan-50 via-white to-emerald-50 border-cyan-200'
       }`}>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 relative z-10">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <span className={`px-4 py-1.5 rounded-full text-xs font-black font-mono tracking-wider border shadow-sm ${
-                isEscapeTime
-                  ? 'bg-red-600 text-white border-red-700'
-                  : 'bg-cyan-600 text-white border-cyan-700'
-              }`}>
-                {activeVenue}
-              </span>
-              <span className={`text-xs px-3.5 py-1 rounded-xl font-mono font-bold ${
+            <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
+              <div className="flex items-center p-1 rounded-xl bg-white/80 border border-slate-200 shadow-xs">
+                <button
+                  onClick={() => setActiveVenue(VENUES.ESCAPE_TIME)}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                    activeVenue === VENUES.ESCAPE_TIME
+                      ? 'bg-red-600 text-white shadow-sm'
+                      : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Escape Time</span>
+                </button>
+                <button
+                  onClick={() => setActiveVenue(VENUES.LASER_SHOOTER)}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                    activeVenue === VENUES.LASER_SHOOTER
+                      ? 'bg-cyan-600 text-white shadow-sm'
+                      : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                >
+                  <Gamepad2 className="w-3.5 h-3.5" />
+                  <span>Laser Shooter</span>
+                </button>
+              </div>
+              <span className={`text-xs px-3 py-1 rounded-xl font-mono font-bold ${
                 weekend ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-100 text-slate-700 border border-slate-200'
               }`}>
                 {operatingHours.label}
               </span>
             </div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+            <h1 className="text-2xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
               Daily Games Schedule
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 mt-1 font-medium">
@@ -208,24 +227,22 @@ export const CalendarDashboard = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-5 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="px-3 py-1">
-              <div className="text-[11px] text-slate-500 font-extrabold uppercase tracking-wider">Day Revenue</div>
-              <div className="text-2xl font-black text-emerald-600 font-mono">₹{dayRevenue.toLocaleString()}</div>
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-sm w-full lg:w-auto text-center sm:text-left">
+            <div className="px-1 sm:px-3 py-1">
+              <div className="text-[10px] sm:text-[11px] text-slate-500 font-extrabold uppercase tracking-wider">Day Revenue</div>
+              <div className="text-lg sm:text-2xl font-black text-emerald-600 font-mono">₹{dayRevenue.toLocaleString()}</div>
             </div>
-            <div className="w-px h-10 bg-slate-200" />
-            <div className="px-3 py-1">
-              <div className="text-[11px] text-slate-500 font-extrabold uppercase tracking-wider">Total Players</div>
-              <div className="text-2xl font-black text-cyan-600 font-mono">{dayPlayers}</div>
+            <div className="border-x border-slate-200 px-1 sm:px-3 py-1">
+              <div className="text-[10px] sm:text-[11px] text-slate-500 font-extrabold uppercase tracking-wider">Total Players</div>
+              <div className="text-lg sm:text-2xl font-black text-cyan-600 font-mono">{dayPlayers}</div>
             </div>
-            <div className="w-px h-10 bg-slate-200" />
-            <div className="px-3 py-1">
-              <div className="text-[11px] text-slate-500 font-extrabold uppercase tracking-wider">Total Games</div>
-              <div className="text-2xl font-black text-amber-600 font-mono flex items-baseline gap-1.5 flex-wrap">
+            <div className="px-1 sm:px-3 py-1">
+              <div className="text-[10px] sm:text-[11px] text-slate-500 font-extrabold uppercase tracking-wider">Total Games</div>
+              <div className="text-lg sm:text-2xl font-black text-amber-600 font-mono flex items-baseline justify-center sm:justify-start gap-1 flex-wrap">
                 <span>{totalGamesCount}</span>
                 {complimentaryGamesCount > 0 && (
-                  <span className="text-xs font-bold font-mono text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded border border-purple-300">
-                    (+{complimentaryGamesCount} Compl.)
+                  <span className="text-[10px] sm:text-xs font-bold font-mono text-purple-700 bg-purple-100 px-1 py-0.2 rounded border border-purple-300">
+                    (+{complimentaryGamesCount})
                   </span>
                 )}
               </div>
@@ -235,41 +252,41 @@ export const CalendarDashboard = ({
       </div>
 
       {/* Date, Game Filters & Pending Navigation Control Bar */}
-      <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row items-center justify-between gap-3 sm:gap-4">
         
         {/* Date Selector */}
-        <div className="flex items-center gap-2 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm w-full lg:w-auto">
+        <div className="flex items-center justify-between gap-1 sm:gap-2 bg-white p-2 sm:p-2.5 rounded-2xl border border-slate-200 shadow-sm w-full lg:w-auto">
           <button
             onClick={handlePrevDay}
-            className="p-2.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all"
+            className="p-2 sm:p-2.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all shrink-0"
             title="Previous Day"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           
-          <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-300 hover:border-cyan-500 transition-all cursor-pointer">
-            <CalendarIcon className="w-4 h-4 text-cyan-600" />
+          <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 bg-slate-50 rounded-xl border border-slate-300 hover:border-cyan-500 transition-all cursor-pointer flex-1 sm:flex-none justify-center">
+            <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-600 shrink-0" />
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-transparent text-sm font-mono font-bold text-slate-900 focus:outline-none cursor-pointer"
+              className="bg-transparent text-xs sm:text-sm font-mono font-bold text-slate-900 focus:outline-none cursor-pointer text-center"
             />
           </div>
 
           <button
             onClick={handleToday}
-            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:text-slate-900 hover:bg-slate-200 transition-all"
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:text-slate-900 hover:bg-slate-200 transition-all shrink-0"
           >
             Today
           </button>
 
           <button
             onClick={handleNextDay}
-            className="p-2.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all"
+            className="p-2 sm:p-2.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all shrink-0"
             title="Next Day"
           >
-            <ChevronRight className="w-5 h-5" />
+            <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
@@ -331,18 +348,18 @@ export const CalendarDashboard = ({
       <div className="space-y-4">
         
         {/* Section Header */}
-        <div className="flex items-center justify-between px-2">
-          <div className="flex items-center gap-2 text-base font-extrabold text-slate-900">
-            <Grid className="w-5 h-5 text-cyan-600" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 gap-1">
+          <div className="flex items-center gap-2 text-sm sm:text-base font-extrabold text-slate-900">
+            <Grid className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-600" />
             <span>Time Slots Schedule Grid ({timeSlots.length} Slots)</span>
           </div>
-          <span className="text-xs sm:text-sm text-slate-500 font-mono font-medium">
-            Side-by-side time slot blocks • Click card or + Book to add game
+          <span className="text-[11px] sm:text-sm text-slate-500 font-mono font-medium">
+            Click available slot or + Book to add game
           </span>
         </div>
 
         {/* Multi-Column Side-by-Side Grid Layout - Scaled up for maximum visibility */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-6">
           {timeSlots.map((slot) => {
             const slotBookings = slotBookingsMap[slot.timeStr] || [];
             const isTopHour = slot.timeStr.endsWith(':00');
@@ -351,7 +368,7 @@ export const CalendarDashboard = ({
               <div
                 key={slot.timeStr}
                 id={`slot-card-${slot.timeStr}`}
-                className={`rounded-2xl border-2 transition-all p-4 sm:p-5 flex flex-col justify-between space-y-4 ${
+                className={`rounded-2xl border-2 transition-all p-3.5 sm:p-5 flex flex-col justify-between space-y-3 sm:space-y-4 ${
                   slotBookings.length > 0
                     ? 'bg-white border-slate-300 shadow-md'
                     : isTopHour

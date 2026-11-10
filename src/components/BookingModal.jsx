@@ -391,24 +391,24 @@ export const BookingModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-md overflow-y-auto">
-      <div className="bg-slate-50 border border-slate-300 rounded-3xl max-w-3xl lg:max-w-4xl w-full p-6 sm:p-8 shadow-2xl relative my-6 overflow-hidden max-h-[92vh] flex flex-col justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-slate-900/60 backdrop-blur-md overflow-y-auto">
+      <div className="bg-slate-50 border border-slate-300 rounded-2xl sm:rounded-3xl max-w-3xl lg:max-w-4xl w-full p-4 sm:p-8 shadow-2xl relative my-2 sm:my-6 overflow-hidden max-h-[96vh] sm:max-h-[92vh] flex flex-col justify-between">
         
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-300 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className={`p-3 rounded-2xl border ${
+        <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-300 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl border ${
               activeVenue === VENUES.ESCAPE_TIME 
                 ? 'bg-red-100 text-red-700 border-red-300 shadow-sm' 
                 : 'bg-cyan-100 text-cyan-700 border-cyan-300 shadow-sm'
             }`}>
-              {editingBooking ? <Edit3 className="w-6 h-6" /> : activeVenue === VENUES.ESCAPE_TIME ? <Lock className="w-6 h-6" /> : <Gamepad2 className="w-6 h-6" />}
+              {editingBooking ? <Edit3 className="w-5 h-5 sm:w-6 sm:h-6" /> : activeVenue === VENUES.ESCAPE_TIME ? <Lock className="w-5 h-5 sm:w-6 sm:h-6" /> : <Gamepad2 className="w-5 h-5 sm:w-6 sm:h-6" />}
             </div>
             <div>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              <h2 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">
                 {editingBooking ? 'Edit Game Entry' : 'New Game Entry'}
               </h2>
-              <p className="text-xs sm:text-sm text-slate-600 font-mono font-semibold">
+              <p className="text-[11px] sm:text-sm text-slate-600 font-mono font-semibold">
                 {activeVenue} • Fast Entry Form
               </p>
             </div>
@@ -416,9 +416,9 @@ export const BookingModal = ({
 
           <button
             onClick={onClose}
-            className="p-2.5 rounded-2xl bg-slate-200/80 text-slate-600 hover:text-slate-900 hover:bg-slate-300 transition-all"
+            className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl bg-slate-200/80 text-slate-600 hover:text-slate-900 hover:bg-slate-300 transition-all"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 

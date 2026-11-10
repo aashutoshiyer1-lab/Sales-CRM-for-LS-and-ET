@@ -1185,15 +1185,15 @@ ${spyNotesText}
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-8">
       
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 p-6 rounded-2xl text-white shadow-xl">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 p-4 sm:p-6 rounded-2xl text-white shadow-xl">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <FileText className="w-7 h-7 text-emerald-400" />
-            <h1 className="text-2xl font-black tracking-tight">Daily Closing Report (OCR Sales)</h1>
-            <span className="bg-emerald-500/20 text-emerald-300 text-xs font-mono font-bold px-2.5 py-1 rounded-full border border-emerald-500/30">
+            <FileText className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" />
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight">Daily Closing Report (OCR Sales)</h1>
+            <span className="bg-emerald-500/20 text-emerald-300 text-[10px] sm:text-xs font-mono font-bold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border border-emerald-500/30">
               Local Host Mode
             </span>
           </div>
@@ -1203,8 +1203,8 @@ ${spyNotesText}
         </div>
 
         {/* Shift Date Selector & Staff Selector */}
-        <div className="flex flex-wrap items-center gap-3 bg-white/10 backdrop-blur-md p-2 rounded-xl border border-white/10">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/60 rounded-lg">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 bg-white/10 backdrop-blur-md p-2 rounded-xl border border-white/10 w-full md:w-auto">
+          <div className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 bg-slate-900/60 rounded-lg">
             <CalendarIcon className="w-4 h-4 text-cyan-400" />
             <input
               type="date"
@@ -1218,7 +1218,7 @@ ${spyNotesText}
           </div>
 
           {/* Predefined Staff Selector */}
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/60 rounded-lg">
+          <div className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 bg-slate-900/60 rounded-lg flex-1 sm:flex-none">
             <span className="text-xs text-slate-400 font-semibold">Staff:</span>
             <select
               value={selectedStaffOption}
@@ -1227,7 +1227,7 @@ ${spyNotesText}
                 setSelectedStaffOption(val);
                 persistUpdates({ selectedStaffOption: val });
               }}
-              className="bg-slate-900 text-white text-xs font-bold focus:outline-none border border-slate-700 rounded px-2 py-0.5 cursor-pointer"
+              className="bg-slate-900 text-white text-xs font-bold focus:outline-none border border-slate-700 rounded px-2 py-0.5 cursor-pointer w-full"
             >
               {PREDEFINED_STAFF_LIST.map(st => (
                 <option key={st} value={st}>{st}</option>

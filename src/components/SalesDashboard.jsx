@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { VENUES, PAYMENT_METHODS, OFFERS, REFERENCES } from '../config/venueData';
+import { VENUES, PAYMENT_METHODS, OFFERS, REFERENCES, VENUE_DETAILS } from '../config/venueData';
 import { getGameCategoryLabel, getBookingCategory } from '../utils/pricingEngine';
 import { 
   BarChart3, 
@@ -26,7 +26,11 @@ import {
   Receipt,
   Copy,
   Check,
-  Camera
+  Camera,
+  X,
+  SlidersHorizontal,
+  Sparkles,
+  Layers
 } from 'lucide-react';
 
 export const SalesDashboard = ({ 
@@ -46,7 +50,65 @@ export const SalesDashboard = ({
   const [copied, setCopied] = useState(false);
   const [highlightedBookingId, setHighlightedBookingId] = useState(null);
 
+  // Column Filter States
+  const [selectedOfferFilter, setSelectedOfferFilter] = useState('ALL');
+  const [selectedGameFilter, setSelectedGameFilter] = useState('ALL');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
+  const [selectedPaymentFilter, setSelectedPaymentFilter] = useState('ALL');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
+  const [selectedRefFilter, setSelectedRefFilter] = useState('ALL');
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
+
   const tableRef = useRef(null);
+
+  // Dynamic list of games according to venueToggle
+  const availableGames = useMemo(() => {
+    if (venueToggle === VENUES.ESCAPE_TIME) {
+      return VENUE_DETAILS[VENUES.ESCAPE_TIME]?.games.map(g => g.name) || [];
+    }
+    if (venueToggle === VENUES.LASER_SHOOTER) {
+      return VENUE_DETAILS[VENUES.LASER_SHOOTER]?.games.map(g => g.name) || [];
+    }
+    return [
+      ...(VENUE_DETAILS[VENUES.ESCAPE_TIME]?.games.map(g => g.name) || []),
+      ...(VENUE_DETAILS[VENUES.LASER_SHOOTER]?.games.map(g => g.name) || [])
+    ];
+  }, [venueToggle]);
+
+  // Dynamic list of references found in data + config
+  const availableReferences = useMemo(() => {
+    const set = new Set(REFERENCES);
+    bookings.forEach(b => {
+      if (b.referencePerson && b.referencePerson !== 'N/A' && b.referencePerson !== 'None') {
+        set.add(b.referencePerson);
+      }
+    });
+    return Array.from(set);
+  }, [bookings]);
+
+  // Count active filters
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (selectedOfferFilter !== 'ALL') count++;
+    if (selectedGameFilter !== 'ALL') count++;
+    if (selectedCategoryFilter !== 'ALL') count++;
+    if (selectedPaymentFilter !== 'ALL') count++;
+    if (selectedStatusFilter !== 'ALL') count++;
+    if (selectedRefFilter !== 'ALL') count++;
+    if (searchQuery.trim() !== '') count++;
+    return count;
+  }, [selectedOfferFilter, selectedGameFilter, selectedCategoryFilter, selectedPaymentFilter, selectedStatusFilter, selectedRefFilter, searchQuery]);
+
+  // Reset all filters to default
+  const handleClearAllFilters = () => {
+    setSelectedOfferFilter('ALL');
+    setSelectedGameFilter('ALL');
+    setSelectedCategoryFilter('ALL');
+    setSelectedPaymentFilter('ALL');
+    setSelectedStatusFilter('ALL');
+    setSelectedRefFilter('ALL');
+    setSearchQuery('');
+  };
 
   // Helper date calculations
   const dateFiltersMemo = useMemo(() => {
@@ -109,14 +171,144 @@ export const SalesDashboard = ({
         const phone = (b.phone || '').toLowerCase();
         const game = (b.gameName || '').toLowerCase();
         const ref = (b.referencePerson || '').toLowerCase();
-        if (!name.includes(q) && !phone.includes(q) && !game.includes(q) && !ref.includes(q)) {
+        const note = (b.customNote || b.customDiscountReason || '').toLowerCase();
+        const offer = (b.offerName || '').toLowerCase();
+        if (!name.includes(q) && !phone.includes(q) && !game.includes(q) && !ref.includes(q) && !note.includes(q) && !offer.includes(q)) {
           return false;
+        }
+      }
+
+      // 4. Dedicated Offer & Discount Filter
+      if (selectedOfferFilter !== 'ALL') {
+        const hasSpecialOnlineOrPrepaid = b.payments && (
+          (Number(b.payments['Prepaid by District']) > 0) ||
+          (Number(b.payments['Prepaid by district']) > 0) ||
+          (Number(b.payments['Activity Kids']) > 0) ||
+          (Number(b.payments['Activity kids']) > 0) ||
+          (Number(b.payments['Razorpay (Website Bookings)']) > 0) ||
+          (Number(b.payments['Razorpay( website bookings)']) > 0) ||
+          (Number(b.payments['Razorpay']) > 0)
+        );
+        const hasAnyDiscount = (b.offerId && b.offerId !== 'none') || (Number(b.discountAmount) > 0) || hasSpecialOnlineOrPrepaid;
+
+        if (selectedOfferFilter === 'NONE') {
+          if (hasAnyDiscount) return false;
+        } else if (selectedOfferFilter === 'ANY_DISCOUNT') {
+          if (!hasAnyDiscount) return false;
+        } else if (selectedOfferFilter === 'district_app') {
+          const isDistrictOffer = b.offerId === 'district_app' || (b.offerName && b.offerName.toLowerCase().includes('district'));
+          const isDistrictPay = b.payments && (Number(b.payments['Prepaid by District']) > 0 || Number(b.payments['Prepaid by district']) > 0);
+          if (!isDistrictOffer && !isDistrictPay) return false;
+        } else if (selectedOfferFilter === 'website_booking') {
+          const isWebOffer = b.offerId === 'website_booking' || (b.offerName && (b.offerName.toLowerCase().includes('razorpay') || b.offerName.toLowerCase().includes('website')));
+          const isWebPay = b.payments && (Number(b.payments['Razorpay (Website Bookings)']) > 0 || Number(b.payments['Razorpay( website bookings)']) > 0 || Number(b.payments['Razorpay']) > 0);
+          if (!isWebOffer && !isWebPay) return false;
+        } else if (selectedOfferFilter === 'activity_kids') {
+          const isKidsOffer = b.offerId === 'activity_kids' || (b.offerName && b.offerName.toLowerCase().includes('activity kids'));
+          const isKidsPay = b.payments && (Number(b.payments['Activity Kids']) > 0 || Number(b.payments['Activity kids']) > 0);
+          if (!isKidsOffer && !isKidsPay) return false;
+        } else if (selectedOfferFilter === 'staff_game') {
+          const isStaff = b.offerId === 'staff_game' || (b.offerName && b.offerName.toLowerCase().includes('staff'));
+          if (!isStaff) return false;
+        } else if (selectedOfferFilter === 'complimentary') {
+          const isComp = b.offerId === 'complimentary' || (b.offerName && b.offerName.toLowerCase().includes('complimentary'));
+          if (!isComp) return false;
+        } else if (selectedOfferFilter === 'custom_discount') {
+          const isCustom = b.offerId === 'custom_discount' || (b.offerName && b.offerName.toLowerCase().includes('custom')) || Boolean(b.customDiscountReason);
+          if (!isCustom) return false;
+        } else if (selectedOfferFilter === 'second_game') {
+          const isSecond = b.offerId === 'second_game' || (b.offerName && b.offerName.toLowerCase().includes('second'));
+          if (!isSecond) return false;
+        } else if (selectedOfferFilter === 'birthday_package') {
+          const isBday = b.offerId === 'birthday_package' || (b.offerName && b.offerName.toLowerCase().includes('birthday'));
+          if (!isBday) return false;
+        } else if (selectedOfferFilter === 'corporate_package') {
+          const isCorp = b.offerId === 'corporate_package' || (b.offerName && b.offerName.toLowerCase().includes('corporate'));
+          if (!isCorp) return false;
+        } else if (selectedOfferFilter === 'high_price_retention') {
+          const isRetention = b.offerId === 'high_price_retention' || (b.offerName && b.offerName.toLowerCase().includes('going back'));
+          if (!isRetention) return false;
+        } else if (selectedOfferFilter === 'cross_promotion') {
+          const isCoupon = b.offerId === 'cross_promotion' || (b.offerName && b.offerName.toLowerCase().includes('coupon'));
+          if (!isCoupon) return false;
+        } else if (selectedOfferFilter === 'cross_promotion_brochure') {
+          const isBrochure = b.offerId === 'cross_promotion_brochure' || (b.offerName && b.offerName.toLowerCase().includes('brochure'));
+          if (!isBrochure) return false;
+        } else {
+          if (b.offerId !== selectedOfferFilter && b.offerName !== selectedOfferFilter) {
+            return false;
+          }
+        }
+      }
+
+      // 5. Game / Room Filter
+      if (selectedGameFilter !== 'ALL') {
+        if (b.gameName !== selectedGameFilter) return false;
+      }
+
+      // 6. Category / Pax Bracket Filter
+      if (selectedCategoryFilter !== 'ALL') {
+        if (selectedCategoryFilter === 'laser') {
+          if (b.venue !== VENUES.LASER_SHOOTER) return false;
+        } else {
+          const cat = getBookingCategory(b, bookings);
+          if (cat !== selectedCategoryFilter) return false;
+        }
+      }
+
+      // 7. Payment Method Filter
+      if (selectedPaymentFilter !== 'ALL') {
+        const p = b.payments || {};
+        if (selectedPaymentFilter === 'Cash') {
+          if (Number(p.Cash || 0) <= 0) return false;
+        } else if (selectedPaymentFilter === 'Card') {
+          if (Number(p.Card || 0) <= 0) return false;
+        } else if (selectedPaymentFilter === 'UPI-New Pay') {
+          if (Number(p['UPI-New Pay'] || 0) <= 0 && Number(p['UPI/New Pay'] || 0) <= 0) return false;
+        } else if (selectedPaymentFilter === 'Prepaid by District') {
+          const amt = Number(p['Prepaid by District'] || 0) + Number(p['Prepaid by district'] || 0);
+          if (amt <= 0 && b.offerId !== 'district_app') return false;
+        } else if (selectedPaymentFilter === 'Razorpay (Website Bookings)') {
+          const amt = Number(p['Razorpay (Website Bookings)'] || 0) + Number(p['Razorpay( website bookings)'] || 0) + Number(p['Razorpay'] || 0);
+          if (amt <= 0 && b.offerId !== 'website_booking') return false;
+        } else if (selectedPaymentFilter === 'Activity Kids') {
+          const amt = Number(p['Activity Kids'] || 0) + Number(p['Activity kids'] || 0);
+          if (amt <= 0 && b.offerId !== 'activity_kids') return false;
+        }
+      }
+
+      // 8. Status Filter
+      if (selectedStatusFilter !== 'ALL') {
+        if (selectedStatusFilter === 'Confirmed' && b.status === 'Pending') return false;
+        if (selectedStatusFilter === 'Pending' && b.status !== 'Pending') return false;
+      }
+
+      // 9. Reference Person Filter
+      if (selectedRefFilter !== 'ALL') {
+        if (selectedRefFilter === 'NONE') {
+          if (b.referencePerson && b.referencePerson !== 'N/A' && b.referencePerson !== 'None') return false;
+        } else {
+          if (b.referencePerson !== selectedRefFilter) return false;
         }
       }
 
       return true;
     });
-  }, [bookings, venueToggle, dateRangeMode, customStartDate, customEndDate, searchQuery, dateFiltersMemo]);
+  }, [
+    bookings, 
+    venueToggle, 
+    dateRangeMode, 
+    customStartDate, 
+    customEndDate, 
+    searchQuery, 
+    selectedOfferFilter,
+    selectedGameFilter,
+    selectedCategoryFilter,
+    selectedPaymentFilter,
+    selectedStatusFilter,
+    selectedRefFilter,
+    dateFiltersMemo
+  ]);
 
   // Chronological Sorting: Date ascending (earliest date first), TimeSlot ascending (11:00 AM before 11:15 AM before 11:30 AM...)
   // Treats midnight (00:xx) and late night (01:xx) slots as end of shift so they sort at the end of the day's schedule
@@ -281,7 +473,8 @@ export const SalesDashboard = ({
     const link = document.createElement('a');
     link.setAttribute('href', csvContent);
     const dateStamp = new Date().toISOString().split('T')[0];
-    link.setAttribute('download', `Sales_Report_${venueToggle}_${dateStamp}.csv`);
+    const offerTag = selectedOfferFilter !== 'ALL' ? `_${selectedOfferFilter}` : '';
+    link.setAttribute('download', `Sales_Report_${venueToggle}${offerTag}_${dateStamp}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -374,40 +567,40 @@ export const SalesDashboard = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-6">
       
       {/* Top Header & Actions */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+          <div className="flex items-center gap-2 mb-1 sm:mb-2">
+            <span className="px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
               Real-time Analytics
             </span>
-            <span className="text-xs text-slate-500 font-mono font-bold">
+            <span className="text-[10px] sm:text-xs text-slate-500 font-mono font-bold">
               All Venues Combined
             </span>
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             Sales & Revenue Dashboard
           </h1>
-          <p className="text-xs text-slate-600 mt-1 font-medium">
+          <p className="text-xs text-slate-600 mt-0.5 sm:mt-1 font-medium">
             Financial reporting, payment segregation, discount audits, and Excel export
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
           <button
             onClick={handleExportToExcel}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md transition-all active:scale-95"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md transition-all active:scale-95"
             title="Download CSV / Excel File"
           >
             <Download className="w-4 h-4 stroke-[2.5]" />
-            <span>Export Excel / CSV Report</span>
+            <span className="whitespace-nowrap">Export CSV</span>
           </button>
 
           <button
             onClick={handleCopyData}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold shadow-md transition-all active:scale-95 ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-extrabold shadow-md transition-all active:scale-95 ${
               copied
                 ? 'bg-emerald-600 text-white ring-2 ring-emerald-300'
                 : 'bg-slate-900 hover:bg-slate-800 text-white'
@@ -419,57 +612,57 @@ export const SalesDashboard = ({
             ) : (
               <Copy className="w-4 h-4 stroke-[2.5]" />
             )}
-            <span>{copied ? 'Copied Sales Data!' : 'Copy Sales Data'}</span>
+            <span className="whitespace-nowrap">{copied ? 'Copied!' : 'Copy Sales'}</span>
           </button>
 
           <button
             onClick={() => setShowResetConfirm(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold transition-all"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold transition-all"
             title="Clear all transactions from memory"
           >
             <RotateCcw className="w-4 h-4" />
-            <span>Reset Data</span>
+            <span className="whitespace-nowrap">Reset</span>
           </button>
         </div>
       </div>
 
       {/* Filter Control Bar */}
-      <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xl space-y-4">
+      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xl space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           
           {/* Venue Selector */}
-          <div className="flex items-center p-1.5 rounded-2xl bg-slate-100 border border-slate-200">
+          <div className="grid grid-cols-3 gap-1 sm:flex sm:items-center p-1 sm:p-1.5 rounded-2xl bg-slate-100 border border-slate-200 w-full lg:w-auto text-center">
             <button
               onClick={() => setVenueToggle('ALL')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all ${
                 venueToggle === 'ALL'
                   ? 'bg-slate-900 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Both Venues
+              Both
             </button>
             <button
               onClick={() => setVenueToggle(VENUES.ESCAPE_TIME)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all ${
                 venueToggle === VENUES.ESCAPE_TIME
                   ? 'bg-red-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Lock className="w-3.5 h-3.5" />
-              Escape Time
+              <Lock className="w-3.5 h-3.5 shrink-0" />
+              <span>Escape</span>
             </button>
             <button
               onClick={() => setVenueToggle(VENUES.LASER_SHOOTER)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all ${
                 venueToggle === VENUES.LASER_SHOOTER
                   ? 'bg-cyan-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Gamepad2 className="w-3.5 h-3.5" />
-              Laser Shooter
+              <Gamepad2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Laser</span>
             </button>
           </div>
 
@@ -523,6 +716,370 @@ export const SalesDashboard = ({
                 className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-300 text-xs font-mono font-bold text-slate-900 focus:outline-none cursor-pointer"
               />
             </div>
+          </div>
+        )}
+
+        {/* Toggle Button for Column & Offer Filters */}
+        <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="w-4 h-4 text-slate-500" />
+            <span className="text-xs font-black uppercase tracking-wider text-slate-700">
+              Column & Offer Filters
+            </span>
+            {activeFilterCount > 0 && !showFiltersPanel && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-black bg-amber-100 text-amber-950 border border-amber-300">
+                {activeFilterCount} Active Filter{activeFilterCount > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+
+          <button
+            onClick={() => setShowFiltersPanel(!showFiltersPanel)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-black transition-all shadow-sm active:scale-95 ${
+              showFiltersPanel
+                ? 'bg-slate-900 text-white ring-2 ring-slate-400'
+                : activeFilterCount > 0
+                  ? 'bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
+            }`}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-600" />
+            <span>{showFiltersPanel ? 'Hide Filters' : 'Show All Column Filters'}</span>
+            {activeFilterCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-cyan-700 text-white text-[10px] flex items-center justify-center font-bold">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Filter Panel: Quick Offer Pills + Column Filters Grid + Active Filter Summary */}
+        {showFiltersPanel && (
+          <div className="space-y-4 pt-3 border-t border-slate-200">
+            
+            {/* Quick Offer & Discount Filter Pills */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1 rounded-lg bg-amber-100 text-amber-800">
+                  <Tag className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-xs font-black uppercase tracking-wider text-slate-800">
+                  Quick Offer & Discount Filter:
+                </span>
+                {selectedOfferFilter !== 'ALL' && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                    Active: {selectedOfferFilter === 'district_app' ? 'Prepaid by District' : selectedOfferFilter === 'staff_game' ? 'Staff Game' : selectedOfferFilter === 'complimentary' ? 'Complimentary' : selectedOfferFilter}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin">
+                {[
+                  { id: 'ALL', label: 'All Offers / Rates' },
+                  { id: 'district_app', label: '🏷️ Prepaid by District', color: 'purple' },
+                  { id: 'staff_game', label: '🏷️ Staff Game (100%)', color: 'amber' },
+                  { id: 'complimentary', label: '🏷️ Complimentary (100%)', color: 'emerald' },
+                  { id: 'website_booking', label: '🏷️ Razorpay / Website', color: 'cyan' },
+                  { id: 'activity_kids', label: '🏷️ Activity Kids', color: 'rose' },
+                  { id: 'second_game', label: '🏷️ Second Game (20%)', color: 'blue' },
+                  { id: 'custom_discount', label: '🏷️ Custom Discount', color: 'orange' },
+                  { id: 'ANY_DISCOUNT', label: 'Any Offer Applied', color: 'indigo' },
+                  { id: 'NONE', label: 'Standard Rate Only', color: 'slate' },
+                ].map((pill) => {
+                  const isSelected = selectedOfferFilter === pill.id;
+                  return (
+                    <button
+                      key={pill.id}
+                      onClick={() => setSelectedOfferFilter(pill.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap shadow-sm active:scale-95 ${
+                        isSelected
+                          ? pill.color === 'purple'
+                            ? 'bg-purple-700 text-white ring-2 ring-purple-300'
+                            : pill.color === 'amber'
+                              ? 'bg-amber-600 text-white ring-2 ring-amber-300'
+                              : pill.color === 'emerald'
+                                ? 'bg-emerald-700 text-white ring-2 ring-emerald-300'
+                                : pill.color === 'cyan'
+                                  ? 'bg-cyan-700 text-white ring-2 ring-cyan-300'
+                                  : pill.color === 'rose'
+                                    ? 'bg-rose-700 text-white ring-2 ring-rose-300'
+                                    : pill.color === 'blue'
+                                      ? 'bg-blue-700 text-white ring-2 ring-blue-300'
+                                      : pill.color === 'orange'
+                                        ? 'bg-orange-700 text-white ring-2 ring-orange-300'
+                                        : 'bg-slate-900 text-white ring-2 ring-slate-400'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                      }`}
+                    >
+                      {pill.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Column Filters Dropdown Grid */}
+            <div className="pt-3 border-t border-slate-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+                
+                {/* 1. Offer / Discount Select */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black uppercase text-slate-700 tracking-wider flex items-center gap-1">
+                    <Tag className="w-3 h-3 text-amber-600" />
+                    <span>Offer / Discount</span>
+                  </label>
+                  <select
+                    value={selectedOfferFilter}
+                    onChange={(e) => setSelectedOfferFilter(e.target.value)}
+                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      selectedOfferFilter !== 'ALL'
+                        ? 'bg-amber-50 text-amber-950 border-amber-400 ring-2 ring-amber-200 font-extrabold'
+                        : 'bg-slate-50 text-slate-800 border-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    <option value="ALL">All Offers & Discounts</option>
+                    <option value="district_app">★ Prepaid by District (District App)</option>
+                    <option value="staff_game">★ Staff Game (100% OFF)</option>
+                    <option value="complimentary">★ Complimentary Game (100% OFF)</option>
+                    <option value="website_booking">★ Website Booking (Razorpay)</option>
+                    <option value="activity_kids">★ Activity Kids</option>
+                    <option value="second_game">Second Game Special (20% OFF)</option>
+                    <option value="birthday_package">Birthday Package (10% OFF)</option>
+                    <option value="corporate_package">Corporate Package (15% OFF)</option>
+                    <option value="high_price_retention">Price Retention / Retention (10% OFF)</option>
+                    <option value="cross_promotion">Cross Promotion Coupon (30% OFF)</option>
+                    <option value="cross_promotion_brochure">Cross Promotion Brochure (30% OFF)</option>
+                    <option value="custom_discount">Custom Reason Discount</option>
+                    <option value="ANY_DISCOUNT">Any Offer Applied</option>
+                    <option value="NONE">Standard Rate Only (No Discount)</option>
+                  </select>
+                </div>
+
+                {/* 2. Game / Room Select */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black uppercase text-slate-700 tracking-wider flex items-center gap-1">
+                    <Gamepad2 className="w-3 h-3 text-cyan-600" />
+                    <span>Game / Room</span>
+                  </label>
+                  <select
+                    value={selectedGameFilter}
+                    onChange={(e) => setSelectedGameFilter(e.target.value)}
+                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      selectedGameFilter !== 'ALL'
+                        ? 'bg-cyan-50 text-cyan-950 border-cyan-400 ring-2 ring-cyan-200 font-extrabold'
+                        : 'bg-slate-50 text-slate-800 border-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    <option value="ALL">All Games & Rooms</option>
+                    {availableGames.map((gameName) => (
+                      <option key={gameName} value={gameName}>{gameName}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 3. Player Category Select */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black uppercase text-slate-700 tracking-wider flex items-center gap-1">
+                    <Users className="w-3 h-3 text-blue-600" />
+                    <span>Pax Bracket</span>
+                  </label>
+                  <select
+                    value={selectedCategoryFilter}
+                    onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      selectedCategoryFilter !== 'ALL'
+                        ? 'bg-blue-50 text-blue-950 border-blue-400 ring-2 ring-blue-200 font-extrabold'
+                        : 'bg-slate-50 text-slate-800 border-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    <option value="ALL">All Player Brackets</option>
+                    <option value="2-3">2–3 Players (ET Bracket)</option>
+                    <option value="4-6">4–6 Players (ET Bracket)</option>
+                    <option value="7+">7+ Players (ET Bracket)</option>
+                    <option value="laser">Flat Rate Arena (Laser Shooter)</option>
+                  </select>
+                </div>
+
+                {/* 4. Payment Method Select */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black uppercase text-slate-700 tracking-wider flex items-center gap-1">
+                    <CreditCard className="w-3 h-3 text-emerald-600" />
+                    <span>Payment Method</span>
+                  </label>
+                  <select
+                    value={selectedPaymentFilter}
+                    onChange={(e) => setSelectedPaymentFilter(e.target.value)}
+                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      selectedPaymentFilter !== 'ALL'
+                        ? 'bg-emerald-50 text-emerald-950 border-emerald-400 ring-2 ring-emerald-200 font-extrabold'
+                        : 'bg-slate-50 text-slate-800 border-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    <option value="ALL">All Payment Methods</option>
+                    {PAYMENT_METHODS.map((method) => (
+                      <option key={method} value={method}>{method}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 5. Booking Status Select */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black uppercase text-slate-700 tracking-wider flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>Status</span>
+                  </label>
+                  <select
+                    value={selectedStatusFilter}
+                    onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      selectedStatusFilter !== 'ALL'
+                        ? 'bg-purple-50 text-purple-950 border-purple-400 ring-2 ring-purple-200 font-extrabold'
+                        : 'bg-slate-50 text-slate-800 border-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="Confirmed">✓ Paid & Confirmed</option>
+                    <option value="Pending">⏳ Payment Pending</option>
+                  </select>
+                </div>
+
+                {/* 6. Approval Reference Select */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black uppercase text-slate-700 tracking-wider flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-indigo-600" />
+                    <span>Approval Ref</span>
+                  </label>
+                  <select
+                    value={selectedRefFilter}
+                    onChange={(e) => setSelectedRefFilter(e.target.value)}
+                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      selectedRefFilter !== 'ALL'
+                        ? 'bg-indigo-50 text-indigo-950 border-indigo-400 ring-2 ring-indigo-200 font-extrabold'
+                        : 'bg-slate-50 text-slate-800 border-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    <option value="ALL">All References</option>
+                    {availableReferences.map((ref) => (
+                      <option key={ref} value={ref}>{ref}</option>
+                    ))}
+                    <option value="NONE">Direct Walk-in / No Ref</option>
+                  </select>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Active Filters Summary Bar */}
+            {activeFilterCount > 0 && (
+              <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-2xl">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                    <Filter className="w-3.5 h-3.5 text-cyan-600" />
+                    <span>Active Filters ({activeFilterCount}):</span>
+                  </span>
+
+                  {selectedOfferFilter !== 'ALL' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-950 border border-amber-300 shadow-sm">
+                      <span>Offer: {selectedOfferFilter === 'district_app' ? 'Prepaid by District' : selectedOfferFilter === 'staff_game' ? 'Staff Game' : selectedOfferFilter === 'complimentary' ? 'Complimentary' : selectedOfferFilter === 'NONE' ? 'Standard Rate' : selectedOfferFilter === 'ANY_DISCOUNT' ? 'Any Discount' : selectedOfferFilter}</span>
+                      <button 
+                        onClick={() => setSelectedOfferFilter('ALL')}
+                        className="hover:text-red-700 ml-1 rounded-full hover:bg-amber-200 p-0.5"
+                        title="Remove offer filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+
+                  {selectedGameFilter !== 'ALL' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-cyan-100 text-cyan-950 border border-cyan-300 shadow-sm">
+                      <span>Game: {selectedGameFilter}</span>
+                      <button 
+                        onClick={() => setSelectedGameFilter('ALL')}
+                        className="hover:text-red-700 ml-1 rounded-full hover:bg-cyan-200 p-0.5"
+                        title="Remove game filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+
+                  {selectedCategoryFilter !== 'ALL' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-950 border border-blue-300 shadow-sm">
+                      <span>Bracket: {selectedCategoryFilter === 'laser' ? 'Flat Rate Arena' : `${selectedCategoryFilter} Players`}</span>
+                      <button 
+                        onClick={() => setSelectedCategoryFilter('ALL')}
+                        className="hover:text-red-700 ml-1 rounded-full hover:bg-blue-200 p-0.5"
+                        title="Remove category filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+
+                  {selectedPaymentFilter !== 'ALL' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-sm">
+                      <span>Payment: {selectedPaymentFilter}</span>
+                      <button 
+                        onClick={() => setSelectedPaymentFilter('ALL')}
+                        className="hover:text-red-700 ml-1 rounded-full hover:bg-emerald-200 p-0.5"
+                        title="Remove payment filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+
+                  {selectedStatusFilter !== 'ALL' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-100 text-purple-950 border border-purple-300 shadow-sm">
+                      <span>Status: {selectedStatusFilter}</span>
+                      <button 
+                        onClick={() => setSelectedStatusFilter('ALL')}
+                        className="hover:text-red-700 ml-1 rounded-full hover:bg-purple-200 p-0.5"
+                        title="Remove status filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+
+                  {selectedRefFilter !== 'ALL' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-950 border border-indigo-300 shadow-sm">
+                      <span>Ref: {selectedRefFilter === 'NONE' ? 'Direct / No Ref' : selectedRefFilter}</span>
+                      <button 
+                        onClick={() => setSelectedRefFilter('ALL')}
+                        className="hover:text-red-700 ml-1 rounded-full hover:bg-indigo-200 p-0.5"
+                        title="Remove reference filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+
+                  {searchQuery.trim() !== '' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-200 text-slate-900 border border-slate-300 shadow-sm">
+                      <span>Search: "{searchQuery}"</span>
+                      <button 
+                        onClick={() => setSearchQuery('')}
+                        className="hover:text-red-700 ml-1 rounded-full hover:bg-slate-300 p-0.5"
+                        title="Clear search query"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleClearAllFilters}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black text-red-700 bg-red-100 hover:bg-red-200 border border-red-300 shadow-sm transition-all active:scale-95 shrink-0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset All Filters</span>
+                </button>
+              </div>
+            )}
+
           </div>
         )}
       </div>
@@ -695,11 +1252,28 @@ export const SalesDashboard = ({
           {PAYMENT_METHODS.map((method) => {
             const amount = metrics.paymentBreakdown[method] || 0;
             const pct = metrics.totalRevenue > 0 ? Math.round((amount / metrics.totalRevenue) * 100) : 0;
+            const isSelected = selectedPaymentFilter === method;
             
             return (
-              <div key={method} className="p-4 sm:p-5 rounded-2xl bg-white border-2 border-slate-300 shadow-md space-y-2.5">
+              <div 
+                key={method} 
+                onClick={() => setSelectedPaymentFilter(isSelected ? 'ALL' : method)}
+                className={`p-4 sm:p-5 rounded-2xl border-2 shadow-md space-y-2.5 cursor-pointer transition-all hover:scale-[1.01] ${
+                  isSelected
+                    ? 'bg-emerald-50 border-emerald-500 ring-4 ring-emerald-200'
+                    : 'bg-white border-slate-300 hover:border-slate-400'
+                }`}
+                title={`Click to filter table by ${method}`}
+              >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-black text-slate-950 text-base sm:text-lg uppercase font-mono tracking-wide">{method}</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-black text-slate-950 text-base sm:text-lg uppercase font-mono tracking-wide">{method}</span>
+                    {isSelected && (
+                      <span className="text-[10px] font-black uppercase bg-emerald-600 text-white px-2 py-0.5 rounded-full font-mono">
+                        Active Filter
+                      </span>
+                    )}
+                  </div>
                   <span className="font-mono text-emerald-900 font-black text-xs sm:text-sm px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 shrink-0">{pct}%</span>
                 </div>
                 <div className="text-2xl sm:text-3xl font-black text-slate-950 font-mono tracking-tight">
@@ -723,11 +1297,21 @@ export const SalesDashboard = ({
         {/* Table Search & Title Header */}
         <div className="p-5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-extrabold text-slate-900">
-              Detailed Sales Transactions ({filteredBookings.length})
-            </h2>
-            <p className="text-xs text-slate-500 font-medium">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-extrabold text-slate-900">
+                Detailed Sales Transactions ({filteredBookings.length})
+              </h2>
+              {activeFilterCount > 0 && (
+                <span className="text-xs font-mono font-black px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-900 border border-cyan-300">
+                  {activeFilterCount} Filter{activeFilterCount > 1 ? 's' : ''} Applied
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
               Showing records for {dateRangeMode.replace('_', ' ')} • {venueToggle}
+              {selectedOfferFilter !== 'ALL' && ` • Offer: ${selectedOfferFilter === 'district_app' ? 'Prepaid by District' : selectedOfferFilter}`}
+              {selectedGameFilter !== 'ALL' && ` • Game: ${selectedGameFilter}`}
+              {selectedPaymentFilter !== 'ALL' && ` • Pay: ${selectedPaymentFilter}`}
             </p>
           </div>
 
@@ -738,8 +1322,17 @@ export const SalesDashboard = ({
               placeholder="Search name, phone, game, ref..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-300 text-xs font-medium text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 focus:outline-none"
+              className="w-full pl-9 pr-8 py-2 rounded-xl bg-white border border-slate-300 text-xs font-medium text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 focus:outline-none"
             />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                title="Clear search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -749,19 +1342,88 @@ export const SalesDashboard = ({
               <tr>
                 <th className="px-5 py-4">Date / Slot</th>
                 <th className="px-5 py-4">Customer Details</th>
-                <th className="px-5 py-4">Venue & Game Name</th>
-                <th className="px-5 py-4">Players</th>
-                <th className="px-5 py-4">Offer & Reference</th>
-                <th className="px-5 py-4">Total Paid / Status</th>
-                <th className="px-5 py-4">Split Payment Breakdown</th>
+                <th className="px-5 py-4">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>Venue & Game</span>
+                    {selectedGameFilter !== 'ALL' && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-600 text-white font-black">
+                        <Filter className="w-2.5 h-2.5" />
+                        {selectedGameFilter}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                <th className="px-5 py-4">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>Players</span>
+                    {selectedCategoryFilter !== 'ALL' && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-600 text-white font-black">
+                        <Filter className="w-2.5 h-2.5" />
+                        {selectedCategoryFilter}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                <th className="px-5 py-4">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>Offer & Reference</span>
+                    {(selectedOfferFilter !== 'ALL' || selectedRefFilter !== 'ALL') && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-600 text-white font-black">
+                        <Filter className="w-2.5 h-2.5" />
+                        Filtered
+                      </span>
+                    )}
+                  </div>
+                </th>
+                <th className="px-5 py-4">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>Total Paid / Status</span>
+                    {selectedStatusFilter !== 'ALL' && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-600 text-white font-black">
+                        <Filter className="w-2.5 h-2.5" />
+                        {selectedStatusFilter}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                <th className="px-5 py-4">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>Payment Split</span>
+                    {selectedPaymentFilter !== 'ALL' && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-600 text-white font-black">
+                        <Filter className="w-2.5 h-2.5" />
+                        {selectedPaymentFilter}
+                      </span>
+                    )}
+                  </div>
+                </th>
                 <th className="px-5 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {sortedBookings.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-6 py-12 text-center text-slate-500 font-mono font-medium">
-                    No game transactions found for the selected filter.
+                  <td colSpan="8" className="px-6 py-14 text-center text-slate-500 font-mono font-medium">
+                    <div className="flex flex-col items-center justify-center gap-3 max-w-sm mx-auto">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
+                        <Filter className="w-6 h-6" />
+                      </div>
+                      <div className="text-sm font-bold text-slate-800">
+                        No transactions found matching your filters
+                      </div>
+                      <p className="text-xs text-slate-500 font-sans">
+                        Try adjusting or clearing your active filters to see all available bookings.
+                      </p>
+                      {activeFilterCount > 0 && (
+                        <button
+                          onClick={handleClearAllFilters}
+                          className="mt-1 flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black bg-cyan-600 hover:bg-cyan-700 text-white shadow-md transition-all active:scale-95"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Clear All Filters ({activeFilterCount})</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (
