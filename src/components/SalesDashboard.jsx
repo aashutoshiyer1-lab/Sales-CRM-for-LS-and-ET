@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { VENUES, PAYMENT_METHODS, OFFERS, REFERENCES, VENUE_DETAILS } from '../config/venueData';
+import { VENUES, PAYMENT_METHODS, OFFERS, REFERENCES, VENUE_DETAILS, getLocalDateString } from '../config/venueData';
 import { getGameCategoryLabel, getBookingCategory } from '../utils/pricingEngine';
 import { 
   BarChart3, 
@@ -113,28 +113,38 @@ export const SalesDashboard = ({
   // Helper date calculations
   const dateFiltersMemo = useMemo(() => {
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = getLocalDateString(today);
 
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const yesterdayStr = getLocalDateString(yesterday);
 
     // Start of week (Monday)
     const dayOfWeek = today.getDay();
     const distanceToMon = (dayOfWeek + 6) % 7;
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - distanceToMon);
-    const startOfWeekStr = startOfWeek.toISOString().split('T')[0];
+    const startOfWeekStr = getLocalDateString(startOfWeek);
 
-    // Start of month
+    // Start of month (1st of current month)
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
+    const startOfMonthStr = getLocalDateString(startOfMonth);
+
+    // Start of last month (1st of previous month)
+    const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const startOfLastMonthStr = getLocalDateString(startOfLastMonth);
+
+    // End of last month (last day of previous month: day 0 of current month)
+    const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+    const endOfLastMonthStr = getLocalDateString(endOfLastMonth);
 
     return {
       todayStr,
       yesterdayStr,
       startOfWeekStr,
       startOfMonthStr,
+      startOfLastMonthStr,
+      endOfLastMonthStr
     };
   }, []);
 
@@ -156,6 +166,8 @@ export const SalesDashboard = ({
         if (bDate < dateFiltersMemo.startOfWeekStr || bDate > dateFiltersMemo.todayStr) return false;
       } else if (dateRangeMode === 'THIS_MONTH') {
         if (bDate < dateFiltersMemo.startOfMonthStr || bDate > dateFiltersMemo.todayStr) return false;
+      } else if (dateRangeMode === 'LAST_MONTH') {
+        if (bDate < dateFiltersMemo.startOfLastMonthStr || bDate > dateFiltersMemo.endOfLastMonthStr) return false;
       } else if (dateRangeMode === 'PENDING_ONLY') {
         if (b.status !== 'Pending') return false;
         if (bDate !== dateFiltersMemo.todayStr) return false;
@@ -673,6 +685,7 @@ export const SalesDashboard = ({
               { id: 'YESTERDAY', label: 'Yesterday' },
               { id: 'THIS_WEEK', label: 'This Week' },
               { id: 'THIS_MONTH', label: 'This Month' },
+              { id: 'LAST_MONTH', label: 'Last Month' },
               { id: 'PENDING_ONLY', label: "Today's Pending Games" },
               { id: 'ALL_TIME', label: 'All Time' },
               { id: 'CUSTOM', label: 'Custom Date' }
@@ -680,7 +693,7 @@ export const SalesDashboard = ({
               <button
                 key={preset.id}
                 onClick={() => setDateRangeMode(preset.id)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                   dateRangeMode === preset.id
                     ? preset.id === 'PENDING_ONLY'
                       ? 'bg-amber-600 text-white shadow-sm'
@@ -698,24 +711,52 @@ export const SalesDashboard = ({
         {/* Custom Date Range Picker */}
         {dateRangeMode === 'CUSTOM' && (
           <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-bold">From:</span>
+            <div 
+              onClick={(e) => {
+                const inp = e.currentTarget.querySelector('input[type="date"]');
+                try { inp?.showPicker(); } catch (_) {}
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-300 hover:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-500/20 cursor-pointer shadow-xs transition-all"
+            >
+              <CalendarIcon className="w-4 h-4 text-cyan-600 shrink-0" />
+              <span className="text-xs text-slate-600 font-bold">From:</span>
               <input
                 type="date"
                 value={customStartDate}
+                onClick={(e) => { try { e.target.showPicker(); } catch (_) {} }}
                 onChange={(e) => setCustomStartDate(e.target.value)}
-                className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-300 text-xs font-mono font-bold text-slate-900 focus:outline-none cursor-pointer"
+                className="bg-transparent text-xs font-mono font-bold text-slate-900 focus:outline-none cursor-pointer"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-bold">To:</span>
+            <div 
+              onClick={(e) => {
+                const inp = e.currentTarget.querySelector('input[type="date"]');
+                try { inp?.showPicker(); } catch (_) {}
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-300 hover:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-500/20 cursor-pointer shadow-xs transition-all"
+            >
+              <CalendarIcon className="w-4 h-4 text-cyan-600 shrink-0" />
+              <span className="text-xs text-slate-600 font-bold">To:</span>
               <input
                 type="date"
                 value={customEndDate}
+                onClick={(e) => { try { e.target.showPicker(); } catch (_) {} }}
                 onChange={(e) => setCustomEndDate(e.target.value)}
-                className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-300 text-xs font-mono font-bold text-slate-900 focus:outline-none cursor-pointer"
+                className="bg-transparent text-xs font-mono font-bold text-slate-900 focus:outline-none cursor-pointer"
               />
             </div>
+            {(customStartDate || customEndDate) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomStartDate('');
+                  setCustomEndDate('');
+                }}
+                className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-2.5 py-1.5 rounded-xl border border-rose-200 transition-all cursor-pointer"
+              >
+                Clear Dates
+              </button>
+            )}
           </div>
         )}
 

@@ -11,6 +11,7 @@ import {
   Coins, 
   ShieldAlert, 
   Calendar as CalendarIcon,
+  ChevronLeft,
   ChevronRight,
   Edit3,
   Plus,
@@ -21,7 +22,7 @@ import {
   X,
   Camera
 } from 'lucide-react';
-import { VENUES } from '../config/venueData';
+import { VENUES, getLocalDateString } from '../config/venueData';
 import { getBookingCategory, getGameCategoryLabel, formatSentenceCaseInput } from '../utils/pricingEngine';
 import { DiscountEntryModal, formatSingleDiscountNote } from './DiscountEntryModal';
 import { subscribeClosingReport, saveClosingReport } from '../config/firebase';
@@ -31,7 +32,7 @@ export const getInitialShiftDate = () => {
   if (now.getHours() < 4) {
     now.setDate(now.getDate() - 1);
   }
-  return now.toISOString().split('T')[0];
+  return getLocalDateString(now);
 };
 
 export const normalizeDate = (d) => {
@@ -99,6 +100,38 @@ export const ClosingReportDashboard = ({
 }) => {
   const initialDate = useMemo(() => getInitialShiftDate(), []);
   const [shiftDate, setShiftDate] = useState(initialDate);
+  const shiftDateInputRef = useRef(null);
+
+  const handlePrevShiftDate = () => {
+    const parts = (shiftDate || getInitialShiftDate()).split('-');
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      d.setDate(d.getDate() - 1);
+      const nextDate = getLocalDateString(d);
+      setShiftDate(nextDate);
+      setIsManualEditMode(false);
+      setCustomReportText('');
+    }
+  };
+
+  const handleNextShiftDate = () => {
+    const parts = (shiftDate || getInitialShiftDate()).split('-');
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      d.setDate(d.getDate() + 1);
+      const nextDate = getLocalDateString(d);
+      setShiftDate(nextDate);
+      setIsManualEditMode(false);
+      setCustomReportText('');
+    }
+  };
+
+  const handleTodayShiftDate = () => {
+    const today = getInitialShiftDate();
+    setShiftDate(today);
+    setIsManualEditMode(false);
+    setCustomReportText('');
+  };
 
   const initialCached = useMemo(() => getCachedClosingReport(initialDate), [initialDate]);
 
@@ -137,19 +170,23 @@ export const ClosingReportDashboard = ({
   const [excessAmounts, setExcessAmounts] = useState(() => ({
     laser: '',
     escape: '',
-    lab: '',
+    hauntedElevator: '',
     lockedIn: '',
+    lab: '',
     sherlock: '',
     spy: '',
+    worldWarBunker: '',
     ...(initialCached?.excessAmounts || {})
   }));
 
   const [notes, setNotes] = useState(() => ({
     laser: '',
-    lab: '',
+    hauntedElevator: '',
     lockedIn: '',
+    lab: '',
     sherlock: '',
     spy: '',
+    worldWarBunker: '',
     ...(initialCached?.notes || {})
   }));
 
@@ -231,8 +268,8 @@ export const ClosingReportDashboard = ({
       if (cached.noteCustomOverrides) setNoteCustomOverrides(cached.noteCustomOverrides);
       if (cached.deletedNoteIds) setDeletedNoteIds(cached.deletedNoteIds);
     } else {
-      setExcessAmounts({ laser: '', lab: '', lockedIn: '', sherlock: '', spy: '' });
-      setNotes({ laser: '', lab: '', lockedIn: '', sherlock: '', spy: '' });
+      setExcessAmounts({ laser: '', escape: '', hauntedElevator: '', lockedIn: '', lab: '', sherlock: '', spy: '', worldWarBunker: '' });
+      setNotes({ laser: '', hauntedElevator: '', lockedIn: '', lab: '', sherlock: '', spy: '', worldWarBunker: '' });
       setStaffGamesCount(0);
       setIsManualEditMode(false);
       setCustomReportText('');
@@ -452,9 +489,11 @@ export const ClosingReportDashboard = ({
   }, [escapeBookings]);
 
   const getRoomStats = (roomNamePattern) => {
-    const roomBookings = escapeBookings.filter(b => 
-      b.gameName && b.gameName.toLowerCase().includes(roomNamePattern.toLowerCase())
-    );
+    const patterns = Array.isArray(roomNamePattern) ? roomNamePattern : [roomNamePattern];
+    const roomBookings = escapeBookings.filter(b => {
+      const g = (b.gameName || b.gameId || '').toLowerCase();
+      return g && patterns.some(p => g.includes(p.toLowerCase()));
+    });
 
     const sessions = roomBookings.filter(b => !isPureComplimentary(b) && !isStaffGame(b)).length;
     const games = roomBookings.reduce((sum, b) => sum + (Number(b.paxCount) || 0), 0);
@@ -503,10 +542,12 @@ export const ClosingReportDashboard = ({
     };
   };
 
-  const labStats = useMemo(() => getRoomStats('Professor'), [escapeBookings]);
+  const hauntedElevatorStats = useMemo(() => getRoomStats(['Haunted', 'Elevator']), [escapeBookings]);
   const lockedInStats = useMemo(() => getRoomStats('Locked In'), [escapeBookings]);
+  const labStats = useMemo(() => getRoomStats(['Professor', 'Lab']), [escapeBookings]);
   const sherlockStats = useMemo(() => getRoomStats('Sherlock'), [escapeBookings]);
   const spyStats = useMemo(() => getRoomStats('Spy Agents'), [escapeBookings]);
+  const worldWarBunkerStats = useMemo(() => getRoomStats(['Bunker', 'World War']), [escapeBookings]);
 
   // --- NO SHOWS & CANCELLED ---
   const noShowsLaser = useMemo(() => {
@@ -520,8 +561,22 @@ export const ClosingReportDashboard = ({
   const totalNoShows = noShowsLaser + noShowsEscape;
 
   const overallSale = useMemo(() => {
-    return laserTotalSale + labStats.sale + lockedInStats.sale + sherlockStats.sale + spyStats.sale;
-  }, [laserTotalSale, labStats.sale, lockedInStats.sale, sherlockStats.sale, spyStats.sale]);
+    return laserTotalSale + 
+      hauntedElevatorStats.sale + 
+      lockedInStats.sale + 
+      labStats.sale + 
+      sherlockStats.sale + 
+      spyStats.sale + 
+      worldWarBunkerStats.sale;
+  }, [
+    laserTotalSale, 
+    hauntedElevatorStats.sale, 
+    lockedInStats.sale, 
+    labStats.sale, 
+    sherlockStats.sale, 
+    spyStats.sale, 
+    worldWarBunkerStats.sale
+  ]);
 
   // --- DISCOUNT APPROVAL NOTES GENERATION & BUCKET SORTING ---
   const { allNotes, khajaBucket, nayeemBucket, onlineBucket, otherBucket, missingRefWarnings, allDiscountNotes } = useMemo(() => {
@@ -534,10 +589,12 @@ export const ClosingReportDashboard = ({
 
     const roomNotesMap = {
       laser: [],
-      lab: [],
+      hauntedElevator: [],
       lockedIn: [],
+      lab: [],
       sherlock: [],
-      spy: []
+      spy: [],
+      worldWarBunker: []
     };
 
     // 1. Process Bookings with Discounts, Custom Notes, or Online Payments (District / Razorpay / Activity Kids)
@@ -591,16 +648,19 @@ export const ClosingReportDashboard = ({
       else if (b.gameName === 'War') laserDuration = '30 mins';
       if (!laserDuration.endsWith('mins') && !laserDuration.endsWith('min')) laserDuration = `${laserDuration} mins`;
 
-      // Map escape room name: Laboratory, Locked In, Sherlock, Spy Agents
+      // Map escape room name: Haunted Elevator, Laboratory, Locked In, Sherlock, Spy Agents, World War Bunker
       const formatRoomName = (r) => {
         if (!r) return 'Escape Room';
-        if (r.includes('Professor') || r.includes('Lab')) return 'Laboratory';
-        if (r.includes('Sherlock')) return 'Sherlock';
-        if (r.includes('Locked')) return 'Locked In';
-        if (r.includes('Spy')) return 'Spy Agents';
+        const str = String(r).toLowerCase();
+        if (str.includes('haunted') || str.includes('elevator')) return 'Haunted Elevator';
+        if (str.includes('professor') || str.includes('lab') || str.includes('prof')) return 'Laboratory';
+        if (str.includes('sherlock')) return 'Sherlock';
+        if (str.includes('locked')) return 'Locked In';
+        if (str.includes('spy')) return 'Spy Agents';
+        if (str.includes('bunker') || str.includes('world war') || str.includes('ww')) return 'World War Bunker';
         return r;
       };
-      const roomClean = isLaser ? laserDuration : formatRoomName(b.gameName);
+      const roomClean = isLaser ? laserDuration : formatRoomName(b.gameName || b.gameId);
 
       const pax = b.paxCount || 1;
       const pct = b.discountPercentage || 0;
@@ -772,11 +832,13 @@ export const ClosingReportDashboard = ({
         if (isLaser) {
           roomNotesMap.laser.push(noteItem);
         } else {
-          const gName = (b.gameName || '').toLowerCase();
-          if (gName.includes('professor') || gName.includes('lab')) roomNotesMap.lab.push(noteItem);
+          const gName = (b.gameName || b.gameId || '').toLowerCase();
+          if (gName.includes('haunted') || gName.includes('elevator')) roomNotesMap.hauntedElevator.push(noteItem);
           else if (gName.includes('locked')) roomNotesMap.lockedIn.push(noteItem);
+          else if (gName.includes('professor') || gName.includes('lab') || gName.includes('prof')) roomNotesMap.lab.push(noteItem);
           else if (gName.includes('sherlock')) roomNotesMap.sherlock.push(noteItem);
           else if (gName.includes('spy')) roomNotesMap.spy.push(noteItem);
+          else if (gName.includes('bunker') || gName.includes('world war') || gName.includes('ww')) roomNotesMap.worldWarBunker.push(noteItem);
           else roomNotesMap.lab.push(noteItem);
         }
       }
@@ -825,10 +887,12 @@ export const ClosingReportDashboard = ({
               roomNotesMap.laser.push(noteItem);
             } else {
               const roomName = (n.roomOrDuration || '').toLowerCase();
-              if (roomName.includes('professor') || roomName.includes('lab')) roomNotesMap.lab.push(noteItem);
+              if (roomName.includes('haunted') || roomName.includes('elevator')) roomNotesMap.hauntedElevator.push(noteItem);
               else if (roomName.includes('locked')) roomNotesMap.lockedIn.push(noteItem);
+              else if (roomName.includes('professor') || roomName.includes('lab') || roomName.includes('prof')) roomNotesMap.lab.push(noteItem);
               else if (roomName.includes('sherlock')) roomNotesMap.sherlock.push(noteItem);
               else if (roomName.includes('spy')) roomNotesMap.spy.push(noteItem);
+              else if (roomName.includes('bunker') || roomName.includes('world war') || roomName.includes('ww')) roomNotesMap.worldWarBunker.push(noteItem);
               else roomNotesMap.lab.push(noteItem);
             }
           }
@@ -856,27 +920,34 @@ export const ClosingReportDashboard = ({
 
   // Derived Auto Laser Print Text
   const autoLaserPrintText = useMemo(() => {
-    if (allDiscountNotes.laser.length === 0) return 'No Laser Shooter notes.';
-    return allDiscountNotes.laser.map((n, idx) => `${idx + 1}. ${getText(n)}`).join('\n\n');
-  }, [allDiscountNotes]);
+    const items = [];
+    if (notes.laser && notes.laser.trim()) items.push(notes.laser.trim());
+    (allDiscountNotes.laser || []).forEach((n, idx) => items.push(`${items.length + 1}. ${getText(n)}`));
+    if (items.length === 0) return 'No Laser Shooter notes.';
+    return items.join('\n\n');
+  }, [allDiscountNotes, notes.laser]);
 
   // Derived Auto Escape Print Text
   const autoEscapePrintText = useMemo(() => {
     const blocks = [];
-    if (allDiscountNotes.lockedIn.length > 0) {
-      blocks.push(`*LOCKED IN*\n` + allDiscountNotes.lockedIn.map((n, i) => `${i + 1}. ${getText(n)}`).join('\n\n'));
-    }
-    if (allDiscountNotes.lab.length > 0) {
-      blocks.push(`*PROFESSOR X'S LAB*\n` + allDiscountNotes.lab.map((n, i) => `${i + 1}. ${getText(n)}`).join('\n\n'));
-    }
-    if (allDiscountNotes.sherlock.length > 0) {
-      blocks.push(`*SHERLOCK'S LAST CASE*\n` + allDiscountNotes.sherlock.map((n, i) => `${i + 1}. ${getText(n)}`).join('\n\n'));
-    }
-    if (allDiscountNotes.spy.length > 0) {
-      blocks.push(`*SPY AGENTS*\n` + allDiscountNotes.spy.map((n, i) => `${i + 1}. ${getText(n)}`).join('\n\n'));
-    }
+    const rooms = [
+      { title: 'HAUNTED ELEVATOR', autoNotes: allDiscountNotes.hauntedElevator, customNote: notes.hauntedElevator },
+      { title: 'LOCKED IN', autoNotes: allDiscountNotes.lockedIn, customNote: notes.lockedIn },
+      { title: "PROFESSOR X'S LAB", autoNotes: allDiscountNotes.lab, customNote: notes.lab },
+      { title: "SHERLOCK'S LAST CASE", autoNotes: allDiscountNotes.sherlock, customNote: notes.sherlock },
+      { title: 'SPY AGENTS', autoNotes: allDiscountNotes.spy, customNote: notes.spy },
+      { title: 'WORLD WAR BUNKER', autoNotes: allDiscountNotes.worldWarBunker, customNote: notes.worldWarBunker },
+    ];
+    rooms.forEach(r => {
+      const items = [];
+      if (r.customNote && r.customNote.trim()) items.push(r.customNote.trim());
+      (r.autoNotes || []).forEach((n) => items.push(`${items.length + 1}. ${getText(n)}`));
+      if (items.length > 0) {
+        blocks.push(`*${r.title}*\n` + items.join('\n\n'));
+      }
+    });
     return blocks.length > 0 ? blocks.join('\n\n') : 'No Escape Room notes.';
-  }, [allDiscountNotes]);
+  }, [allDiscountNotes, notes]);
 
   // Construct Dynamic WhatsApp Closing Report Text
   const generatedWhatsAppReport = useMemo(() => {
@@ -889,16 +960,14 @@ export const ClosingReportDashboard = ({
     };
 
     const formatExcess = (val) => {
-      if (!val || String(val).trim() === '' || String(val).trim() === '0') return '00';
-      const clean = String(val).trim();
+      if (!val || String(val).trim() === '' || String(val).trim() === '0' || String(val).trim() === '00') return '00';
+      const clean = String(val).trim().replace(/^[₹\s]+/, '').replace(/\s*over$/i, '').trim();
       const n = parseInt(clean, 10);
-      if (!isNaN(n) && n < 10 && n >= 0) {
-        return String(n).padStart(2, '0');
-      }
-      return clean;
+      if (isNaN(n) || n <= 0) return '00';
+      return `₹${n} over`;
     };
 
-    const formatNotesBlock = (customNote, autoNotes) => {
+    const formatNotesBlock = (customNote, autoNotes = []) => {
       const combined = [];
       if (customNote && customNote.trim()) {
         combined.push(customNote.trim());
@@ -914,10 +983,12 @@ export const ClosingReportDashboard = ({
     };
 
     const laserNotesText = formatNotesBlock(notes.laser, allDiscountNotes.laser);
+    const hauntedElevatorNotesText = formatNotesBlock(notes.hauntedElevator, allDiscountNotes.hauntedElevator);
     const lockedInNotesText = formatNotesBlock(notes.lockedIn, allDiscountNotes.lockedIn);
     const labNotesText = formatNotesBlock(notes.lab, allDiscountNotes.lab);
     const sherlockNotesText = formatNotesBlock(notes.sherlock, allDiscountNotes.sherlock);
     const spyNotesText = formatNotesBlock(notes.spy, allDiscountNotes.spy);
+    const worldWarBunkerNotesText = formatNotesBlock(notes.worldWarBunker, allDiscountNotes.worldWarBunker);
 
     const laserExcessVal = formatExcess(excessAmounts.laser);
     const escapeExcessVal = formatExcess(excessAmounts.escape !== undefined ? excessAmounts.escape : (excessAmounts.lab || ''));
@@ -941,6 +1012,13 @@ Fog machine - OFF
 
 *ESCAPE TIME SALES*
 Excess:- *${escapeExcessVal}*
+
+       *HAUNTED ELEVATOR*
+No of sessions:- *${pad2(hauntedElevatorStats.sessions)}*
+Total games :- *${pad2(hauntedElevatorStats.games)}*
+Total sale:- ₹${hauntedElevatorStats.sale.toLocaleString()}/-
+Complementary game: *${pad2(hauntedElevatorStats.complCount)}*
+${hauntedElevatorNotesText}
 
        *LOCKED IN*
 No of sessions:- *${pad2(lockedInStats.sessions)}*
@@ -970,6 +1048,13 @@ Total sale:- ₹${spyStats.sale.toLocaleString()}/-
 Complementary game: *${pad2(spyStats.complCount)}*
 ${spyNotesText}
 
+       *WORLD WAR BUNKER*
+No of sessions:- *${pad2(worldWarBunkerStats.sessions)}*
+Total games :- *${pad2(worldWarBunkerStats.games)}*
+Total sale:- ₹${worldWarBunkerStats.sale.toLocaleString()}/-
+Complementary game: *${pad2(worldWarBunkerStats.complCount)}*
+${worldWarBunkerNotesText}
+
 
 *Overall sale*:- *₹${overallSale.toLocaleString()}/-*
      *${staffNameUpper}*`;
@@ -986,10 +1071,12 @@ ${spyNotesText}
     excessAmounts,
     notes,
     allDiscountNotes,
+    hauntedElevatorStats,
     lockedInStats,
     labStats,
     sherlockStats,
     spyStats,
+    worldWarBunkerStats,
     overallSale,
     staffName
   ]);
@@ -1204,17 +1291,54 @@ ${spyNotesText}
 
         {/* Shift Date Selector & Staff Selector */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 bg-white/10 backdrop-blur-md p-2 rounded-xl border border-white/10 w-full md:w-auto">
-          <div className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 bg-slate-900/60 rounded-lg">
-            <CalendarIcon className="w-4 h-4 text-cyan-400" />
-            <input
-              type="date"
-              value={shiftDate}
-              onChange={(e) => {
-                setShiftDate(e.target.value);
-                setIsManualEditMode(false);
+          {/* Shift Date Navigation Controls */}
+          <div className="flex items-center gap-1 bg-slate-900/80 rounded-xl p-1 border border-slate-700/60 shadow-inner">
+            <button
+              type="button"
+              onClick={handlePrevShiftDate}
+              title="Previous Date"
+              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div 
+              onClick={(e) => {
+                try { shiftDateInputRef.current?.showPicker(); } catch (_) {}
               }}
-              className="bg-transparent text-white text-xs font-mono font-bold focus:outline-none cursor-pointer"
-            />
+              className="flex items-center gap-2 px-2.5 py-1 bg-slate-950/70 hover:bg-slate-950 rounded-lg border border-cyan-500/40 hover:border-cyan-400 transition-all cursor-pointer"
+            >
+              <CalendarIcon className="w-4 h-4 text-cyan-400 shrink-0" />
+              <input
+                ref={shiftDateInputRef}
+                type="date"
+                value={shiftDate}
+                onClick={(e) => { try { e.target.showPicker(); } catch (_) {} }}
+                onChange={(e) => {
+                  setShiftDate(e.target.value);
+                  setIsManualEditMode(false);
+                  setCustomReportText('');
+                }}
+                className="bg-transparent text-white text-xs font-mono font-bold focus:outline-none cursor-pointer [color-scheme:dark]"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleTodayShiftDate}
+              className="px-2 py-1 rounded-lg text-[11px] font-bold text-cyan-300 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
+            >
+              Today
+            </button>
+
+            <button
+              type="button"
+              onClick={handleNextShiftDate}
+              title="Next Date"
+              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
 
           {/* Predefined Staff Selector */}
@@ -1494,7 +1618,7 @@ ${spyNotesText}
                 <h2 className="text-base font-extrabold text-slate-900 tracking-tight">Escape Time Sales & Rooms</h2>
               </div>
               <span className="text-xs font-extrabold font-mono text-red-700 bg-red-50 px-3 py-1 rounded-full border border-red-200 shadow-2xs">
-                ₹{(labStats.sale + lockedInStats.sale + sherlockStats.sale + spyStats.sale).toLocaleString()} Total
+                ₹{(hauntedElevatorStats.sale + lockedInStats.sale + labStats.sale + sherlockStats.sale + spyStats.sale + worldWarBunkerStats.sale).toLocaleString()} Total
               </span>
             </div>
 
@@ -1529,10 +1653,12 @@ ${spyNotesText}
 
             <div className="space-y-4">
               {[
+                { name: "Haunted Elevator", key: 'hauntedElevator', stats: hauntedElevatorStats, bg: 'bg-purple-50/40', border: 'border-purple-100' },
                 { name: "Locked In", key: 'lockedIn', stats: lockedInStats, bg: 'bg-amber-50/40', border: 'border-amber-100' },
                 { name: "Professor X's Lab", key: 'lab', stats: labStats, bg: 'bg-red-50/40', border: 'border-red-100' },
                 { name: "Sherlock's Last Case", key: 'sherlock', stats: sherlockStats, bg: 'bg-emerald-50/40', border: 'border-emerald-100' },
-                { name: "Spy Agents", key: 'spy', stats: spyStats, bg: 'bg-cyan-50/40', border: 'border-cyan-100' }
+                { name: "Spy Agents", key: 'spy', stats: spyStats, bg: 'bg-cyan-50/40', border: 'border-cyan-100' },
+                { name: "World War Bunker", key: 'worldWarBunker', stats: worldWarBunkerStats, bg: 'bg-orange-50/40', border: 'border-orange-100' }
               ].map(room => (
                 <div key={room.key} className={`p-4 rounded-xl border ${room.border} ${room.bg} space-y-3`}>
                   <div className="flex items-center justify-between">
@@ -1958,22 +2084,45 @@ ${spyNotesText}
             {/* Editable Text Area Preview */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>Formatted Output Preview</span>
-                <button
-                  onClick={() => {
-                    const nextMode = !isManualEditMode;
-                    const nextText = nextMode ? (customReportText || generatedWhatsAppReport) : customReportText;
-                    setIsManualEditMode(nextMode);
-                    if (nextMode && !customReportText) {
-                      setCustomReportText(generatedWhatsAppReport);
-                    }
-                    persistUpdates({ isManualEditMode: nextMode, customReportText: nextText });
-                  }}
-                  className="text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
-                >
-                  <Edit3 className="w-3 h-3" />
-                  {isManualEditMode ? 'Auto Sync Mode' : 'Manual Edit Mode'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <span>Formatted Output Preview</span>
+                  {isManualEditMode && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      Manual Edits Active
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2.5">
+                  {isManualEditMode && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsManualEditMode(false);
+                        setCustomReportText('');
+                        persistUpdates({ isManualEditMode: false, customReportText: '' });
+                      }}
+                      className="text-amber-400 hover:text-amber-300 hover:underline flex items-center gap-1 font-bold text-xs cursor-pointer"
+                      title="Revert manual edits and restore dynamic live report"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Revert to Auto
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      const nextMode = !isManualEditMode;
+                      const nextText = nextMode ? (customReportText || generatedWhatsAppReport) : customReportText;
+                      setIsManualEditMode(nextMode);
+                      if (nextMode && !customReportText) {
+                        setCustomReportText(generatedWhatsAppReport);
+                      }
+                      persistUpdates({ isManualEditMode: nextMode, customReportText: nextText });
+                    }}
+                    className="text-cyan-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    {isManualEditMode ? 'Switch to Auto Sync' : 'Manual Edit Mode'}
+                  </button>
+                </div>
               </div>
 
               <textarea

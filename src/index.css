@@ -19,6 +19,19 @@
   input[type=number] {
     -moz-appearance: textfield;
   }
+
+  /* Make date pickers fully interactive & clickable across all browsers */
+  input[type="date"] {
+    cursor: pointer;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.85;
+    padding: 2px;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
 }
 
 /* Custom scrollbar */

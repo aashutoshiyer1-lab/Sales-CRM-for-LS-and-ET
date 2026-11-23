@@ -51,6 +51,8 @@ export const VENUE_DETAILS = {
       { id: 'prof_x', name: "Professor X's Lab", duration: 60, type: 'Sci-Fi Escape' },
       { id: 'sherlock', name: "Sherlock's Last Case", duration: 75, type: 'Mystery Room' },
       { id: 'spy_agents', name: 'Spy Agents', duration: 30, type: 'Action Quest' },
+      { id: 'haunted_elevator', name: 'Haunted Elevator', duration: 30, type: 'Horror Escape' },
+      { id: 'world_war_bunker', name: 'World War Bunker', duration: 30, type: 'Escape Room' },
     ]
   },
   [VENUES.LASER_SHOOTER]: {

@@ -18,7 +18,8 @@ export const calculatePricing = ({
 
   if (pax > 0 && gameName && gameName !== '') {
     if (venue === VENUES.ESCAPE_TIME) {
-      if (gameName === 'Locked In' || gameName === "Professor X's Lab") {
+      const gClean = (gameName || '').trim().toLowerCase();
+      if (gClean === 'locked in' || gClean === 'locked_in' || gClean.includes('locked') || gClean.includes('professor') || gClean.includes('lab') || gClean === 'prof_x') {
         if (pax <= 3) {
           ratePerPax = weekend ? 1099 : 999;
           tierLabel = '2-3 Players Category';
@@ -29,7 +30,7 @@ export const calculatePricing = ({
           ratePerPax = weekend ? 899 : 799;
           tierLabel = '7+ Players Category';
         }
-      } else if (gameName === "Sherlock's Last Case") {
+      } else if (gClean.includes('sherlock')) {
         if (pax <= 3) {
           ratePerPax = weekend ? 1199 : 1099;
           tierLabel = '2-3 Players Category';
@@ -40,7 +41,7 @@ export const calculatePricing = ({
           ratePerPax = weekend ? 999 : 899;
           tierLabel = '7+ Players Category';
         }
-      } else if (gameName === 'Spy Agents') {
+      } else if (gClean.includes('spy') || gClean.includes('haunted') || gClean.includes('elevator') || gClean.includes('bunker') || gClean.includes('world war')) {
         if (pax <= 3) {
           ratePerPax = weekend ? 499 : 449;
           tierLabel = '2-3 Players Category';

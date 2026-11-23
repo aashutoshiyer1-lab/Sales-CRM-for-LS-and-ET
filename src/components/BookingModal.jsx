@@ -527,15 +527,22 @@ export const BookingModal = ({
 
             {/* Date & Dynamic 12-Hour Operating Hours Time Slot */}
             <div className="grid grid-cols-2 gap-2.5">
-              <div className="p-2.5 rounded-2xl bg-cyan-100/60 border border-cyan-300">
-                <label className="block text-[11px] font-black text-cyan-800 mb-1 uppercase tracking-wider flex items-center gap-1">
+              <div 
+                onClick={(e) => {
+                  const inp = e.currentTarget.querySelector('input[type="date"]');
+                  try { inp?.showPicker(); } catch (_) {}
+                }}
+                className="p-2.5 rounded-2xl bg-cyan-100/60 border border-cyan-300 cursor-pointer hover:bg-cyan-100/80 transition-all shadow-2xs"
+              >
+                <label className="block text-[11px] font-black text-cyan-800 mb-1 uppercase tracking-wider flex items-center gap-1 cursor-pointer">
                   <CalendarIcon className="w-3.5 h-3.5 text-cyan-700" /> Date
                 </label>
                 <input
                   type="date"
                   value={date}
+                  onClick={(e) => { try { e.target.showPicker(); } catch (_) {} }}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-cyan-300 text-xs sm:text-sm font-mono font-bold text-slate-900 focus:outline-none cursor-pointer"
+                  className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-cyan-300 text-xs sm:text-sm font-mono font-bold text-slate-900 focus:outline-none cursor-pointer shadow-xs"
                 />
               </div>
               

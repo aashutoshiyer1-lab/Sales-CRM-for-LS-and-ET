@@ -31,7 +31,7 @@ export const CalendarDashboard = ({
   onEditBooking, 
   onDeleteBooking 
 }) => {
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
   const [gameFilter, setGameFilter] = useState('ALL');
   const [, setRateOverrideTick] = useState(0);
 
@@ -51,19 +51,25 @@ export const CalendarDashboard = ({
   const weekend = operatingHours.isWeekend;
 
   const handlePrevDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() - 1);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    const parts = (selectedDate || getLocalDateString()).split('-');
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      d.setDate(d.getDate() - 1);
+      setSelectedDate(getLocalDateString(d));
+    }
   };
 
   const handleNextDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + 1);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    const parts = (selectedDate || getLocalDateString()).split('-');
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      d.setDate(d.getDate() + 1);
+      setSelectedDate(getLocalDateString(d));
+    }
   };
 
   const handleToday = () => {
-    setSelectedDate(new Date().toISOString().split('T')[0]);
+    setSelectedDate(getLocalDateString());
   };
 
   const activeBookings = useMemo(() => {
@@ -136,12 +142,16 @@ export const CalendarDashboard = ({
 
   const todayStr = useMemo(() => getLocalDateString(), []);
 
-  // List pending games strictly for TODAY across ALL VENUES (never tomorrow's or future advance bookings)
-  const todayPendingBookings = useMemo(() => {
-    return bookings.filter(b => b.date === todayStr && b.status === 'Pending');
-  }, [bookings, todayStr]);
+  // List pending games strictly for the SELECTED DATE and CURRENT VENUE (never other dates or other venues)
+  const currentPendingBookings = useMemo(() => {
+    return bookings.filter(b => 
+      b.date === selectedDate && 
+      b.venue === activeVenue && 
+      b.status === 'Pending'
+    );
+  }, [bookings, selectedDate, activeVenue]);
 
-  // Handle navigating directly to a pending booking from dropdown across both venues
+  // Handle navigating directly to a pending booking from dropdown
   const handleJumpToPending = (bookingId) => {
     if (!bookingId) return;
     const target = bookings.find(b => b.id === bookingId);
@@ -264,11 +274,18 @@ export const CalendarDashboard = ({
             <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           
-          <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 bg-slate-50 rounded-xl border border-slate-300 hover:border-cyan-500 transition-all cursor-pointer flex-1 sm:flex-none justify-center">
+          <div 
+            onClick={(e) => {
+              const inp = e.currentTarget.querySelector('input[type="date"]');
+              try { inp?.showPicker(); } catch (_) {}
+            }}
+            className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-300 hover:border-cyan-500 transition-all cursor-pointer flex-1 sm:flex-none justify-center shadow-2xs"
+          >
             <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-600 shrink-0" />
             <input
               type="date"
               value={selectedDate}
+              onClick={(e) => { try { e.target.showPicker(); } catch (_) {} }}
               onChange={(e) => setSelectedDate(e.target.value)}
               className="bg-transparent text-xs sm:text-sm font-mono font-bold text-slate-900 focus:outline-none cursor-pointer text-center"
             />
@@ -290,8 +307,8 @@ export const CalendarDashboard = ({
           </button>
         </div>
 
-        {/* Pending Games Quick Jump Dropdown - Filtered STRICTLY for TODAY */}
-        {todayPendingBookings.length > 0 && (
+        {/* Pending Games Quick Jump Dropdown - Filtered strictly for the selected date & active venue */}
+        {currentPendingBookings.length > 0 && (
           <div className="flex items-center gap-2 bg-amber-50 p-2.5 rounded-2xl border border-amber-300 shadow-sm w-full lg:w-auto">
             <Clock3 className="w-4 h-4 text-amber-700 ml-1 shrink-0" />
             <select
@@ -300,11 +317,11 @@ export const CalendarDashboard = ({
               defaultValue=""
             >
               <option value="" disabled>
-                -- Today's Pending Entries ({todayPendingBookings.length}) --
+                -- {selectedDate === todayStr ? "Today's" : "Selected Date"} Pending Entries ({currentPendingBookings.length}) --
               </option>
-              {todayPendingBookings.map((pb) => (
+              {currentPendingBookings.map((pb) => (
                 <option key={pb.id} value={pb.id}>
-                  [{pb.venue || 'Escape Time'}] {pb.customerName} - {pb.gameName} ({pb.timeSlot})
+                  {pb.customerName} - {pb.gameName} ({pb.timeSlot})
                 </option>
               ))}
             </select>

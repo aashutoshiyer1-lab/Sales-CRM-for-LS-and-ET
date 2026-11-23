@@ -3,10 +3,12 @@ import { X, Plus, Sparkles, ShieldAlert, CheckCircle2, Info, Camera, Layers, Che
 import { formatSentenceCaseInput } from '../utils/pricingEngine';
 
 const ET_ROOM_OPTIONS = [
-  "Professor X's Lab",
   "Locked In",
+  "Professor X's Lab",
   "Sherlock's Last Case",
-  "Spy Agents"
+  "Spy Agents",
+  "Haunted Elevator",
+  "World War Bunker"
 ];
 
 export const formatSingleDiscountNote = (entry, forPreview = false) => {
@@ -49,10 +51,13 @@ export const formatSingleDiscountNote = (entry, forPreview = false) => {
 
   const formatRoomName = (r) => {
     if (!r) return 'Escape Room';
-    if (r.includes('Professor') || r.includes('Lab')) return 'Laboratory';
-    if (r.includes('Sherlock')) return 'Sherlock';
-    if (r.includes('Locked')) return 'Locked In';
-    if (r.includes('Spy')) return 'Spy Agents';
+    const str = String(r).toLowerCase();
+    if (str.includes('haunted') || str.includes('elevator')) return 'Haunted Elevator';
+    if (str.includes('professor') || str.includes('lab') || str.includes('prof')) return 'Laboratory';
+    if (str.includes('sherlock')) return 'Sherlock';
+    if (str.includes('locked')) return 'Locked In';
+    if (str.includes('spy')) return 'Spy Agents';
+    if (str.includes('bunker') || str.includes('world war') || str.includes('ww')) return 'World War Bunker';
     return r;
   };
 
@@ -210,10 +215,12 @@ export const DiscountEntryModal = ({
   const [groupSizeVal, setGroupSizeVal] = useState('');
   const [isGroupSizeSplit, setIsGroupSizeSplit] = useState(false);
   const [groupSizes, setGroupSizes] = useState({
-    "Professor X's Lab": '',
     "Locked In": '',
+    "Professor X's Lab": '',
     "Sherlock's Last Case": '',
-    "Spy Agents": ''
+    "Spy Agents": '',
+    "Haunted Elevator": '',
+    "World War Bunker": ''
   });
 
   const [percentage, setPercentage] = useState('30');
@@ -235,10 +242,12 @@ export const DiscountEntryModal = ({
       setGroupSizeVal(initialEntry.groupSizeVal !== undefined && initialEntry.groupSizeVal !== '' ? String(initialEntry.groupSizeVal) : '');
       setIsGroupSizeSplit(Boolean(initialEntry.isGroupSizeSplit));
       setGroupSizes(initialEntry.groupSizes || {
-        "Professor X's Lab": '',
         "Locked In": '',
+        "Professor X's Lab": '',
         "Sherlock's Last Case": '',
-        "Spy Agents": ''
+        "Spy Agents": '',
+        "Haunted Elevator": '',
+        "World War Bunker": ''
       });
       setPercentage(initialEntry.percentage !== undefined ? String(initialEntry.percentage) : '30');
       setCustomPct(initialEntry.customPct !== undefined ? String(initialEntry.customPct) : '25');
@@ -256,10 +265,12 @@ export const DiscountEntryModal = ({
       setGroupSizeVal('');
       setIsGroupSizeSplit(false);
       setGroupSizes({
-        "Professor X's Lab": '',
         "Locked In": '',
+        "Professor X's Lab": '',
         "Sherlock's Last Case": '',
-        "Spy Agents": ''
+        "Spy Agents": '',
+        "Haunted Elevator": '',
+        "World War Bunker": ''
       });
       setPercentage('30');
       setCustomPct('25');

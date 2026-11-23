@@ -160,8 +160,9 @@ export const RateOverrideModal = ({ isOpen, onClose, onRateUpdated }) => {
                 <input
                   type="date"
                   value={targetDate}
+                  onClick={(e) => { try { e.target.showPicker(); } catch (_) {} }}
                   onChange={(e) => setTargetDate(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border-2 border-cyan-500 text-sm font-black text-slate-900 bg-white shadow-sm focus:ring-2 focus:ring-cyan-600 focus:outline-none"
+                  className="w-full px-3.5 py-2 rounded-xl border-2 border-cyan-500 text-sm font-black text-slate-900 bg-white shadow-sm focus:ring-2 focus:ring-cyan-600 focus:outline-none cursor-pointer"
                 />
                 <p className="text-[10px] text-slate-600 font-mono flex items-center justify-between pt-0.5">
                   <span>Calendar Default:</span>
